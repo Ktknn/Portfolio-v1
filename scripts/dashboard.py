@@ -39,19 +39,35 @@ from scripts.portfolio_models import (
 from scripts.visualization import (
     plot_interactive_stock_chart,
     plot_interactive_stock_chart_with_indicators,
-    plot_stock_chart_with_forecast,
     plot_efficient_frontier,
+    plot_max_sharpe_with_cal,
+    plot_min_volatility_scatter,
     display_results,
     backtest_portfolio,
-    plot_candlestick_chart
+    plot_candlestick_chart,
+    plot_min_cvar_analysis,
+    plot_min_cdar_analysis,
+    visualize_hrp_model
 )
-from scripts.forecasting_models import get_forecast, backtest_forecast
 from scripts.ui_components import (
     display_selected_stocks,
     display_selected_stocks_2
 )
 from scripts.market_overview import (
     show_sector_overview_page
+)
+from scripts.session_manager import (
+    initialize_session_state,
+    save_manual_filter_state,
+    save_manual_fundamental_filters,
+    save_auto_filter_state,
+    save_auto_fundamental_filters,
+    get_manual_filter_state,
+    get_manual_fundamental_filters,
+    get_auto_filter_state,
+    get_auto_fundamental_filters,
+    update_current_tab,
+    get_current_tab
 )
 import scripts.data_loader as data_loader_module
 
@@ -62,13 +78,8 @@ file_path = os.path.join(data_dir, "company_info.csv")
 # Lấy dữ liệu từ file CSV
 df = fetch_data_from_csv(file_path)
 
-# Tạo session state để lưu mã cổ phiếu đã chọn
-if 'selected_stocks' not in st.session_state:
-    st.session_state.selected_stocks = []
-if 'selected_stocks_2' not in st.session_state:
-    st.session_state.selected_stocks_2 = []
-if 'final_selected_stocks' not in st.session_state:
-    st.session_state.final_selected_stocks = {}
+# Khởi tạo session state khi ứng dụng khởi động
+initialize_session_state()
 
 
 def run_models(data):
@@ -83,13 +94,29 @@ def run_models(data):
         return
     
     st.sidebar.title("Chọn chiến lược đầu tư")
+    
+    # Lấy số tiền đầu tư từ session state dựa trên tab hiện tại
+    current_tab = get_current_tab()
+    if current_tab == "Tự chọn mã cổ phiếu":
+        default_investment = st.session_state.manual_investment_amount
+        investment_key = "manual_investment_amount"
+    else:
+        default_investment = st.session_state.auto_investment_amount
+        investment_key = "auto_investment_amount"
+    
     total_investment = st.sidebar.number_input(
         "Nhập số tiền đầu tư (VND)", 
         min_value=1000, 
-        value=1000000, 
+        value=default_investment, 
         step=100000,
-        key="number_input_2"
+        key=f"number_input_{investment_key}"
     )
+    
+    # Lưu số tiền đầu tư vào session state
+    if current_tab == "Tự chọn mã cổ phiếu":
+        st.session_state.manual_investment_amount = total_investment
+    else:
+        st.session_state.auto_investment_amount = total_investment
 
     models = {
         "Tối ưu hóa giữa lợi nhuận và rủi ro": {
@@ -139,6 +166,54 @@ def run_models(data):
                             result["max_sharpe_idx"],
                             list(result["Trọng số danh mục"].values())
                         )
+                    
+                    # Vẽ biểu đồ Max Sharpe với đường CAL
+                    elif strategy_name == "Hiệu suất tối đa":
+                        tickers = list(result["Trọng số danh mục"].keys())
+                        plot_max_sharpe_with_cal(
+                            result["ret_arr"],
+                            result["vol_arr"],
+                            result["sharpe_arr"],
+                            result["all_weights"],
+                            tickers,
+                            result["Lợi nhuận kỳ vọng"],
+                            result["Rủi ro (Độ lệch chuẩn)"],
+                            result.get("risk_free_rate", 0.04)
+                        )
+                    
+                    # Vẽ biểu đồ Min Volatility với scatter plot
+                    elif strategy_name == "Đầu tư an toàn":
+                        tickers = list(result["Trọng số danh mục"].keys())
+                        plot_min_volatility_scatter(
+                            result["ret_arr"],
+                            result["vol_arr"],
+                            result["sharpe_arr"],
+                            result["all_weights"],
+                            tickers,
+                            result["Lợi nhuận kỳ vọng"],
+                            result["Rủi ro (Độ lệch chuẩn)"],
+                            result.get("max_sharpe_return"),
+                            result.get("max_sharpe_volatility"),
+                            result.get("min_vol_weights"),
+                            result.get("max_sharpe_weights"),
+                            result.get("risk_free_rate", 0.02)
+                        )
+                    
+                    # Vẽ biểu đồ phân tích Min CVaR
+                    elif strategy_name == "Phòng ngừa tổn thất cực đại":
+                        plot_min_cvar_analysis(result)
+                    
+                    # Vẽ biểu đồ phân tích Min CDaR
+                    elif strategy_name == "Kiểm soát tổn thất kéo dài":
+                        # Tính Max Sharpe để so sánh
+                        max_sharpe_result = max_sharpe(data, total_investment, get_latest_prices)
+                        # Tính returns data từ price data
+                        returns_data = data.pct_change().dropna()
+                        plot_min_cdar_analysis(result, max_sharpe_result, returns_data)
+                    
+                    # Vẽ biểu đồ phân tích HRP với Dendrogram
+                    elif strategy_name == "Đa dạng hóa thông minh":
+                        visualize_hrp_model(data, result)
 
                     # Lấy thông tin cổ phiếu và trọng số từ kết quả
                     symbols = list(result["Trọng số danh mục"].keys())
@@ -178,7 +253,13 @@ def main_manual_selection():
     # Kiểm tra session state và lấy danh sách cổ phiếu đã chọn
     if "selected_stocks" in st.session_state and st.session_state.selected_stocks:
         selected_stocks = st.session_state.selected_stocks
-        # Lấy dữ liệu giá cổ phiếu
+        
+        # Lấy trạng thái ngày đã lưu
+        filter_state = get_manual_filter_state()
+        default_start = filter_state.get('start_date') or pd.to_datetime(ANALYSIS_START_DATE).date()
+        default_end = filter_state.get('end_date') or pd.to_datetime(ANALYSIS_END_DATE).date()
+        
+        # Lấy dữ liệu giá cổ phiếu (sử dụng start_date và end_date từ sidebar)
         data, skipped_tickers = fetch_stock_data2(selected_stocks, start_date, end_date)
 
         if not data.empty:
@@ -187,47 +268,15 @@ def main_manual_selection():
             # === THÊM OPTION BIỂU ĐỒ NẾN ===
             show_candlestick = False
             if len(selected_stocks) == 1:
-                show_candlestick = st.checkbox("Hiển thị biểu đồ nến (Candlestick)", value=False, key="candlestick_1")
-            
-            # === THÊM UI DỰ BÁO ===
-            with st.expander("Dự báo giá cổ phiếu", expanded=False):
-                st.markdown("*Chọn cổ phiếu và phương pháp dự báo*")
-                
-                # Chỉ hiển thị dự báo nếu có 1 cổ phiếu được chọn
-                if len(selected_stocks) == 1:
-                    enable_forecast = st.checkbox("Hiển thị dự báo", value=False)
-                    
-                    if enable_forecast:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            forecast_method = st.selectbox(
-                                "Phương pháp dự báo",
-                                ["auto", "arima", "exp_smoothing", "moving_average"],
-                                format_func=lambda x: {
-                                    "auto": "Tự động (ARIMA ưu tiên)",
-                                    "arima": "ARIMA - Phân tích chuỗi thời gian",
-                                    "exp_smoothing": "Exponential Smoothing",
-                                    "moving_average": "Moving Average - Trung bình động"
-                                }[x]
-                            )
-                        
-                        with col2:
-                            forecast_days = st.slider(
-                                "Số ngày dự báo",
-                                min_value=7,
-                                max_value=90,
-                                value=30,
-                                step=7
-                            )
-                        
-                        st.info("💡 **Lưu ý:** Dự báo chỉ là ước tính dựa trên dữ liệu lịch sử và không đảm bảo chính xác 100%.")
-                else:
-                    enable_forecast = False
-                    if len(selected_stocks) > 1:
-                        st.warning("⚠️ Dự báo chỉ khả dụng khi chọn 1 cổ phiếu. Hiện đang chọn nhiều cổ phiếu.")
-                    else:
-                        st.info("Vui lòng chọn ít nhất 1 cổ phiếu để sử dụng chức năng dự báo.")
+                # Lấy trạng thái đã lưu
+                default_candlestick = st.session_state.manual_show_candlestick
+                show_candlestick = st.checkbox(
+                    "Hiển thị biểu đồ nến (Candlestick)", 
+                    value=default_candlestick, 
+                    key="candlestick_1"
+                )
+                # Lưu trạng thái
+                st.session_state.manual_show_candlestick = show_candlestick
             
             # Vẽ biểu đồ giá cổ phiếu
             if show_candlestick and len(selected_stocks) == 1:
@@ -240,38 +289,6 @@ def main_manual_selection():
                     else:
                         st.error("Không thể tải dữ liệu OHLC. Hiển thị biểu đồ đường thay thế.")
                         plot_interactive_stock_chart(data, selected_stocks)
-            elif enable_forecast and len(selected_stocks) == 1:
-                # Lấy dự báo
-                ticker = selected_stocks[0]
-                with st.spinner(f"Đang dự báo giá {ticker}..."):
-                    forecast_result = get_forecast(
-                        data, 
-                        ticker, 
-                        method=forecast_method, 
-                        forecast_periods=forecast_days
-                    )
-                    
-                    # Thực hiện backtesting để tính các chỉ số đánh giá
-                    if forecast_result:
-                        with st.spinner("Đang tính toán các chỉ số đánh giá..."):
-                            backtest_result = backtest_forecast(
-                                data,
-                                ticker,
-                                method=forecast_method,
-                                test_periods=min(30, len(data) // 3)  # Sử dụng 30 ngày hoặc 1/3 dữ liệu cho test
-                            )
-                            
-                            if backtest_result and 'metrics' in backtest_result:
-                                # Thêm metrics vào forecast_result
-                                forecast_result['metrics'] = backtest_result['metrics']
-                
-                if forecast_result:
-                    # Vẽ biểu đồ với dự báo
-                    plot_stock_chart_with_forecast(data, ticker, forecast_result, None)
-                else:
-                    st.error("Không thể tạo dự báo. Vui lòng thử phương pháp khác hoặc tăng khoảng thời gian dữ liệu.")
-                    # Vẽ biểu đồ bình thường
-                    plot_interactive_stock_chart(data, selected_stocks)
             else:
                 # Vẽ biểu đồ bình thường
                 plot_interactive_stock_chart(data, selected_stocks)
@@ -295,20 +312,31 @@ def main_auto_selection():
         selected_stocks_2 = st.session_state.selected_stocks_2
         st.sidebar.title("Chọn thời gian tính toán")
         today = datetime.date.today()
+        
+        # Lấy trạng thái ngày đã lưu
+        filter_state = get_auto_filter_state()
+        default_start_2 = filter_state.get('start_date') or pd.to_datetime(ANALYSIS_START_DATE).date()
+        default_end_2 = filter_state.get('end_date') or pd.to_datetime(ANALYSIS_END_DATE).date()
+        
         start_date_2 = st.sidebar.date_input(
             "Ngày bắt đầu", 
-            value=pd.to_datetime(ANALYSIS_START_DATE).date(), 
+            value=default_start_2, 
             min_value=pd.to_datetime(ANALYSIS_START_DATE).date(),
             max_value=pd.to_datetime(ANALYSIS_END_DATE).date(),
             key="start_date_2"
         )
         end_date_2 = st.sidebar.date_input(
             "Ngày kết thúc", 
-            value=pd.to_datetime(ANALYSIS_END_DATE).date(), 
+            value=default_end_2, 
             min_value=pd.to_datetime(ANALYSIS_START_DATE).date(),
             max_value=pd.to_datetime(ANALYSIS_END_DATE).date(),
             key="end_date_2"
         )
+        
+        # Lưu trạng thái ngày
+        if 'auto_filter_state' in st.session_state:
+            st.session_state.auto_filter_state['start_date'] = start_date_2
+            st.session_state.auto_filter_state['end_date'] = end_date_2
         
         # Kiểm tra ngày bắt đầu và ngày kết thúc
         if start_date_2 > today or end_date_2 > today:
@@ -327,49 +355,15 @@ def main_auto_selection():
             # === THÊM OPTION BIỂU ĐỒ NẾN ===
             show_candlestick_2 = False
             if len(selected_stocks_2) == 1:
-                show_candlestick_2 = st.checkbox("Hiển thị biểu đồ nến (Candlestick)", value=False, key="candlestick_2")
-            
-            # === THÊM UI DỰ BÁO ===
-            with st.expander("🔮 Dự báo giá cổ phiếu", expanded=False):
-                st.markdown("*Chọn cổ phiếu và phương pháp dự báo*")
-                
-                # Chỉ hiển thị dự báo nếu có 1 cổ phiếu được chọn
-                if len(selected_stocks_2) == 1:
-                    enable_forecast_2 = st.checkbox("Hiển thị dự báo", value=False, key="enable_forecast_2")
-                    
-                    if enable_forecast_2:
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            forecast_method_2 = st.selectbox(
-                                "Phương pháp dự báo",
-                                ["auto", "arima", "exp_smoothing", "moving_average"],
-                                format_func=lambda x: {
-                                    "auto": "Tự động (ARIMA ưu tiên)",
-                                    "arima": "ARIMA - Phân tích chuỗi thời gian",
-                                    "exp_smoothing": "Exponential Smoothing",
-                                    "moving_average": "Moving Average - Trung bình động"
-                                }[x],
-                                key="forecast_method_2"
-                            )
-                        
-                        with col2:
-                            forecast_days_2 = st.slider(
-                                "Số ngày dự báo",
-                                min_value=7,
-                                max_value=90,
-                                value=30,
-                                step=7,
-                                key="forecast_days_2"
-                            )
-                        
-                        st.info("💡 **Lưu ý:** Dự báo chỉ là ước tính dựa trên dữ liệu lịch sử và không đảm bảo chính xác 100%.")
-                else:
-                    enable_forecast_2 = False
-                    if len(selected_stocks_2) > 1:
-                        st.warning("⚠️ Dự báo chỉ khả dụng khi chọn 1 cổ phiếu. Hiện đang chọn nhiều cổ phiếu.")
-                    else:
-                        st.info("Vui lòng chọn ít nhất 1 cổ phiếu để sử dụng chức năng dự báo.")
+                # Lấy trạng thái đã lưu
+                default_candlestick_2 = st.session_state.auto_show_candlestick
+                show_candlestick_2 = st.checkbox(
+                    "Hiển thị biểu đồ nến (Candlestick)", 
+                    value=default_candlestick_2, 
+                    key="candlestick_2"
+                )
+                # Lưu trạng thái
+                st.session_state.auto_show_candlestick = show_candlestick_2
             
             # Vẽ biểu đồ giá cổ phiếu
             if show_candlestick_2 and len(selected_stocks_2) == 1:
@@ -382,38 +376,6 @@ def main_auto_selection():
                     else:
                         st.error("Không thể tải dữ liệu OHLC. Hiển thị biểu đồ đường thay thế.")
                         plot_interactive_stock_chart(data, selected_stocks_2)
-            elif enable_forecast_2 and len(selected_stocks_2) == 1:
-                # Lấy dự báo
-                ticker = selected_stocks_2[0]
-                with st.spinner(f"Đang dự báo giá {ticker}..."):
-                    forecast_result_2 = get_forecast(
-                        data, 
-                        ticker, 
-                        method=forecast_method_2, 
-                        forecast_periods=forecast_days_2
-                    )
-                    
-                    # Thực hiện backtesting để tính các chỉ số đánh giá
-                    if forecast_result_2:
-                        with st.spinner("Đang tính toán các chỉ số đánh giá..."):
-                            backtest_result_2 = backtest_forecast(
-                                data,
-                                ticker,
-                                method=forecast_method_2,
-                                test_periods=min(30, len(data) // 3)  # Sử dụng 30 ngày hoặc 1/3 dữ liệu cho test
-                            )
-                            
-                            if backtest_result_2 and 'metrics' in backtest_result_2:
-                                # Thêm metrics vào forecast_result_2
-                                forecast_result_2['metrics'] = backtest_result_2['metrics']
-                
-                if forecast_result_2:
-                    # Vẽ biểu đồ với dự báo
-                    plot_stock_chart_with_forecast(data, ticker, forecast_result_2, None)
-                else:
-                    st.error("Không thể tạo dự báo. Vui lòng thử phương pháp khác hoặc tăng khoảng thời gian dữ liệu.")
-                    # Vẽ biểu đồ bình thường
-                    plot_interactive_stock_chart(data, selected_stocks_2)
             else:
                 # Vẽ biểu đồ bình thường
                 plot_interactive_stock_chart(data, selected_stocks_2)
@@ -431,33 +393,54 @@ def main_auto_selection():
 # Sidebar
 st.sidebar.title("Lựa chọn phương thức")
 
-# Tùy chọn giữa các chế độ
+# Tùy chọn giữa các chế độ - Lấy giá trị mặc định từ session state
+default_option = get_current_tab()
 option = st.sidebar.radio(
     "Chọn phương thức", 
-    ["Tổng quan Thị trường & Ngành", "Tự chọn cổ phiếu", "Hệ thống đề xuất cổ phiếu tự động"]
+    ["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động"],
+    index=["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động"].index(default_option) if default_option in ["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động"] else 0
 )
+
+# Cập nhật tab hiện tại vào session state
+update_current_tab(option)
 
 if option == "Tổng quan Thị trường & Ngành":
     # Hiển thị trang tổng quan ngành
     show_sector_overview_page(df, data_loader_module)
 
-elif option == "Tự chọn cổ phiếu":
+elif option == "Tự chọn mã cổ phiếu":
     # Giao diện người dùng để lọc từ file CSV
     st.title("Dashboard hỗ trợ tối ưu hóa danh mục đầu tư chứng khoán")
     
     # Sidebar
     st.sidebar.title("Bộ lọc và Cấu hình")
     
+    # Lấy trạng thái đã lưu
+    filter_state = get_manual_filter_state()
+    
     # Bộ lọc theo sàn giao dịch (exchange)
     exchanges = df['exchange'].unique()
-    default_index = list(exchanges).index(DEFAULT_MARKET) if DEFAULT_MARKET in exchanges else 0
+    # Sử dụng giá trị đã lưu hoặc mặc định
+    saved_exchange = filter_state.get('exchange')
+    if saved_exchange and saved_exchange in exchanges:
+        default_index = list(exchanges).index(saved_exchange)
+    else:
+        default_index = list(exchanges).index(DEFAULT_MARKET) if DEFAULT_MARKET in exchanges else 0
+    
     selected_exchange = st.sidebar.selectbox('Chọn sàn giao dịch', exchanges, index=default_index)
 
     # Lọc dữ liệu dựa trên sàn giao dịch đã chọn
     filtered_df = df[df['exchange'] == selected_exchange]
 
     # Bộ lọc theo loại ngành (icb_name)
-    selected_icb_name = st.sidebar.selectbox('Chọn ngành', filtered_df['icb_name'].unique())
+    icb_names = filtered_df['icb_name'].unique()
+    saved_icb = filter_state.get('icb_name')
+    if saved_icb and saved_icb in icb_names:
+        default_icb_index = list(icb_names).index(saved_icb)
+    else:
+        default_icb_index = 0
+    
+    selected_icb_name = st.sidebar.selectbox('Chọn ngành', icb_names, index=default_icb_index)
 
     # Lọc dữ liệu dựa trên ngành đã chọn
     filtered_df = filtered_df[filtered_df['icb_name'] == selected_icb_name]
@@ -466,49 +449,59 @@ elif option == "Tự chọn cổ phiếu":
     st.sidebar.markdown("---")
     st.sidebar.subheader(" Bộ lọc phân tích cơ bản")
     
-    # Checkbox để bật/tắt bộ lọc phân tích cơ bản
-    enable_fundamental_filter = st.sidebar.checkbox("Bật bộ lọc cổ phiếu giá trị", value=False)
+    # Checkbox để bật/tắt bộ lọc phân tích cơ bản - lấy từ session state
+    enable_fundamental_filter = st.sidebar.checkbox(
+        "Bật bộ lọc mã cổ phiếu giá trị", 
+        value=filter_state.get('enable_fundamental_filter', False)
+    )
     
     if enable_fundamental_filter:
-        st.sidebar.markdown("*Lọc cổ phiếu theo tiêu chí phân tích cơ bản*")
+        st.sidebar.markdown("*Lọc mã cổ phiếu theo tiêu chí phân tích cơ bản*")
+        
+        # Lấy giá trị đã lưu
+        saved_filters = get_manual_fundamental_filters()
         
         # Bộ lọc P/E (Price to Earnings)
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            pe_min = st.number_input("P/E tối thiểu", min_value=0.0, value=0.0, step=0.5, key="pe_min")
+            pe_min = st.number_input("P/E tối thiểu", min_value=0.0, value=saved_filters['pe_min'], step=0.5, key="pe_min")
         with col2:
-            pe_max = st.number_input("P/E tối đa", min_value=0.0, value=30.0, step=0.5, key="pe_max")
+            pe_max = st.number_input("P/E tối đa", min_value=0.0, value=saved_filters['pe_max'], step=0.5, key="pe_max")
         
         # Bộ lọc P/B (Price to Book)
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            pb_min = st.number_input("P/B tối thiểu", min_value=0.0, value=0.0, step=0.1, key="pb_min")
+            pb_min = st.number_input("P/B tối thiểu", min_value=0.0, value=saved_filters['pb_min'], step=0.1, key="pb_min")
         with col2:
-            pb_max = st.number_input("P/B tối đa", min_value=0.0, value=3.0, step=0.1, key="pb_max")
+            pb_max = st.number_input("P/B tối đa", min_value=0.0, value=saved_filters['pb_max'], step=0.1, key="pb_max")
         
         # Bộ lọc ROE (Return on Equity)
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            roe_min = st.number_input("ROE tối thiểu (%)", min_value=0.0, value=10.0, step=1.0, key="roe_min")
+            roe_min = st.number_input("ROE tối thiểu (%)", min_value=0.0, value=saved_filters['roe_min'], step=1.0, key="roe_min")
         with col2:
-            roe_max = st.number_input("ROE tối đa (%)", min_value=0.0, value=100.0, step=1.0, key="roe_max")
+            roe_max = st.number_input("ROE tối đa (%)", min_value=0.0, value=saved_filters['roe_max'], step=1.0, key="roe_max")
         
         # Bộ lọc ROA (Return on Assets)
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            roa_min = st.number_input("ROA tối thiểu (%)", min_value=0.0, value=5.0, step=1.0, key="roa_min")
+            roa_min = st.number_input("ROA tối thiểu (%)", min_value=0.0, value=saved_filters['roa_min'], step=1.0, key="roa_min")
         with col2:
-            roa_max = st.number_input("ROA tối đa (%)", min_value=0.0, value=100.0, step=1.0, key="roa_max")
+            roa_max = st.number_input("ROA tối đa (%)", min_value=0.0, value=saved_filters['roa_max'], step=1.0, key="roa_max")
         
         # Bộ lọc biên lợi nhuận (Profit Margin)
         col1, col2 = st.sidebar.columns(2)
         with col1:
-            margin_min = st.number_input("Biên lợi nhuận tối thiểu (%)", min_value=0.0, value=5.0, step=1.0, key="margin_min")
+            margin_min = st.number_input("Biên lợi nhuận tối thiểu (%)", min_value=0.0, value=saved_filters['margin_min'], step=1.0, key="margin_min")
         with col2:
-            margin_max = st.number_input("Biên lợi nhuận tối đa (%)", min_value=0.0, value=100.0, step=1.0, key="margin_max")
+            margin_max = st.number_input("Biên lợi nhuận tối đa (%)", min_value=0.0, value=saved_filters['margin_max'], step=1.0, key="margin_max")
         
         # Bộ lọc EPS (Earnings per Share)
-        eps_min = st.sidebar.number_input("EPS tối thiểu (nghìn VND)", min_value=0.0, value=1000.0, step=100.0, key="eps_min")
+        eps_min = st.sidebar.number_input("EPS tối thiểu (nghìn VND)", min_value=0.0, value=saved_filters['eps_min'], step=100.0, key="eps_min")
+        
+        # Lưu trạng thái bộ lọc
+        save_manual_fundamental_filters(pe_min, pe_max, pb_min, pb_max, roe_min, roe_max, 
+                                       roa_min, roa_max, margin_min, margin_max, eps_min)
         
         # Nút áp dụng bộ lọc
         if st.sidebar.button("🔍 Áp dụng bộ lọc phân tích cơ bản"):
@@ -569,13 +562,13 @@ elif option == "Tự chọn cổ phiếu":
                     
                     # Lưu vào session state
                     st.session_state.filtered_fundamental = filtered_fundamental
-                    st.sidebar.success(f"✓ Đã lọc được {len(filtered_fundamental)} cổ phiếu đáp ứng tiêu chí")
+                    st.sidebar.success(f"✓ Đã lọc được {len(filtered_fundamental)} mã cổ phiếu đáp ứng tiêu chí")
                 else:
                     st.sidebar.error("Không thể lấy dữ liệu phân tích cơ bản")
         
         # Hiển thị kết quả lọc
         if 'filtered_fundamental' in st.session_state and not st.session_state.filtered_fundamental.empty:
-            st.subheader(" Kết quả lọc cổ phiếu giá trị")
+            st.subheader(" Kết quả lọc mã cổ phiếu giá trị")
             display_df = st.session_state.filtered_fundamental.copy()
             
             # Format các cột để dễ đọc
@@ -598,14 +591,14 @@ elif option == "Tự chọn cổ phiếu":
             
             st.dataframe(display_df[cols_to_display], use_container_width=True)
             
-            # Cho phép thêm các cổ phiếu đã lọc vào danh mục
-            if st.button(" Thêm tất cả cổ phiếu đã lọc vào danh mục"):
+            # Cho phép thêm các mã cổ phiếu đã lọc vào danh mục
+            if st.button(" Thêm tất cả mã cổ phiếu đã lọc vào danh mục"):
                 added_count = 0
                 for symbol in st.session_state.filtered_fundamental['symbol'].tolist():
                     if symbol not in st.session_state.selected_stocks:
                         st.session_state.selected_stocks.append(symbol)
                         added_count += 1
-                st.success(f"✓ Đã thêm {added_count} cổ phiếu vào danh mục!")
+                st.success(f"✓ Đã thêm {added_count} mã cổ phiếu vào danh mục!")
             
             # Cập nhật filtered_df để hiển thị trong multiselect
             filtered_df = filtered_df[filtered_df['symbol'].isin(st.session_state.filtered_fundamental['symbol'].tolist())]
@@ -627,16 +620,24 @@ elif option == "Tự chọn cổ phiếu":
 
     # Lựa chọn thời gian lấy dữ liệu (sử dụng config mặc định)
     today = datetime.date.today()
+    
+    # Lấy giá trị ngày đã lưu
+    default_start = filter_state.get('start_date') or pd.to_datetime(ANALYSIS_START_DATE).date()
+    default_end = filter_state.get('end_date') or pd.to_datetime(ANALYSIS_END_DATE).date()
+    
     start_date = st.sidebar.date_input(
         "Ngày bắt đầu", 
-        value=pd.to_datetime(ANALYSIS_START_DATE).date(), 
+        value=default_start, 
         max_value=today
     )
     end_date = st.sidebar.date_input(
         "Ngày kết thúc", 
-        value=pd.to_datetime(ANALYSIS_END_DATE).date(), 
+        value=default_end, 
         max_value=today
     )
+    
+    # Lưu trạng thái bộ lọc
+    save_manual_filter_state(selected_exchange, selected_icb_name, start_date, end_date, enable_fundamental_filter)
     
     # Kiểm tra ngày bắt đầu và ngày kết thúc
     if start_date > today or end_date > today:
@@ -655,19 +656,28 @@ elif option == "Hệ thống đề xuất cổ phiếu tự động":
     st.title("Hệ thống đề xuất cổ phiếu")
     st.sidebar.title("Cấu hình đề xuất cổ phiếu")
 
+    # Lấy trạng thái đã lưu
+    auto_state = get_auto_filter_state()
+    
     # Bước 1: Chọn sàn giao dịch
     if not df.empty:
+        # Sử dụng giá trị đã lưu hoặc mặc định
+        saved_exchanges = auto_state.get('exchanges', [])
+        if not saved_exchanges:
+            saved_exchanges = [DEFAULT_MARKET] if DEFAULT_MARKET in df['exchange'].unique() else []
+        
         selected_exchanges = st.sidebar.multiselect(
             "Chọn sàn giao dịch", 
             df['exchange'].unique(), 
-            default=[DEFAULT_MARKET] if DEFAULT_MARKET in df['exchange'].unique() else None
+            default=saved_exchanges
         )
 
         # Lọc dữ liệu theo nhiều sàn giao dịch
         filtered_df = df[df['exchange'].isin(selected_exchanges)]
 
         # Bước 2: Chọn nhiều ngành
-        selected_sectors = st.sidebar.multiselect("Chọn ngành", filtered_df['icb_name'].unique())
+        saved_sectors = auto_state.get('sectors', [])
+        selected_sectors = st.sidebar.multiselect("Chọn ngành", filtered_df['icb_name'].unique(), default=saved_sectors)
 
         if selected_sectors:
             # Lọc theo các ngành đã chọn
@@ -675,17 +685,30 @@ elif option == "Hệ thống đề xuất cổ phiếu tự động":
 
             # Bước 3: Chọn số lượng cổ phiếu cho từng ngành
             stocks_per_sector = {}
+            saved_stocks_per_sector = auto_state.get('stocks_per_sector', {})
+            
             for sector in selected_sectors:
+                # Sử dụng giá trị đã lưu hoặc mặc định
+                default_num = saved_stocks_per_sector.get(sector, 3)
                 num_stocks = st.sidebar.number_input(
                     f"Số cổ phiếu muốn đầu tư trong ngành '{sector}'", 
                     min_value=1, 
                     max_value=10, 
-                    value=3
+                    value=default_num,
+                    key=f"num_stocks_{sector}"
                 )
                 stocks_per_sector[sector] = num_stocks
 
             # Bước 4: Chọn cách lọc
-            filter_method = st.sidebar.radio("Cách lọc cổ phiếu", ["Lợi nhuận lớn nhất", "Rủi ro bé nhất", "Phân tích cơ bản (Cổ phiếu giá trị)"])
+            saved_filter_method = auto_state.get('filter_method', 'Lợi nhuận lớn nhất')
+            filter_method_options = ["Lợi nhuận lớn nhất", "Rủi ro bé nhất", "Phân tích cơ bản (Cổ phiếu giá trị)"]
+            default_method_index = filter_method_options.index(saved_filter_method) if saved_filter_method in filter_method_options else 0
+            
+            filter_method = st.sidebar.radio(
+                "Cách lọc cổ phiếu", 
+                filter_method_options,
+                index=default_method_index
+            )
 
             # === BỘ LỌC PHÂN TÍCH CƠ BẢN CHO ĐỀ XUẤT TỰ ĐỘNG ===
             fundamental_filters = {}
@@ -693,31 +716,38 @@ elif option == "Hệ thống đề xuất cổ phiếu tự động":
                 st.sidebar.markdown("---")
                 st.sidebar.subheader("Tiêu chí phân tích cơ bản")
                 
+                # Lấy giá trị đã lưu
+                saved_auto_filters = get_auto_fundamental_filters()
+                
                 # Bộ lọc P/E
                 col1, col2 = st.sidebar.columns(2)
                 with col1:
-                    pe_min_auto = st.number_input("P/E tối thiểu", min_value=0.0, value=0.0, step=0.5, key="pe_min_auto")
+                    pe_min_auto = st.number_input("P/E tối thiểu", min_value=0.0, value=saved_auto_filters['pe_min'], step=0.5, key="pe_min_auto")
                 with col2:
-                    pe_max_auto = st.number_input("P/E tối đa", min_value=0.0, value=20.0, step=0.5, key="pe_max_auto")
+                    pe_max_auto = st.number_input("P/E tối đa", min_value=0.0, value=saved_auto_filters['pe_max'], step=0.5, key="pe_max_auto")
                 
                 # Bộ lọc P/B
                 col1, col2 = st.sidebar.columns(2)
                 with col1:
-                    pb_min_auto = st.number_input("P/B tối thiểu", min_value=0.0, value=0.0, step=0.1, key="pb_min_auto")
+                    pb_min_auto = st.number_input("P/B tối thiểu", min_value=0.0, value=saved_auto_filters['pb_min'], step=0.1, key="pb_min_auto")
                 with col2:
-                    pb_max_auto = st.number_input("P/B tối đa", min_value=0.0, value=2.0, step=0.1, key="pb_max_auto")
+                    pb_max_auto = st.number_input("P/B tối đa", min_value=0.0, value=saved_auto_filters['pb_max'], step=0.1, key="pb_max_auto")
                 
                 # Bộ lọc ROE
-                roe_min_auto = st.sidebar.number_input("ROE tối thiểu (%)", min_value=0.0, value=15.0, step=1.0, key="roe_min_auto")
+                roe_min_auto = st.sidebar.number_input("ROE tối thiểu (%)", min_value=0.0, value=saved_auto_filters['roe_min'], step=1.0, key="roe_min_auto")
                 
                 # Bộ lọc ROA
-                roa_min_auto = st.sidebar.number_input("ROA tối thiểu (%)", min_value=0.0, value=8.0, step=1.0, key="roa_min_auto")
+                roa_min_auto = st.sidebar.number_input("ROA tối thiểu (%)", min_value=0.0, value=saved_auto_filters['roa_min'], step=1.0, key="roa_min_auto")
                 
                 # Bộ lọc biên lợi nhuận
-                margin_min_auto = st.sidebar.number_input("Biên lợi nhuận tối thiểu (%)", min_value=0.0, value=10.0, step=1.0, key="margin_min_auto")
+                margin_min_auto = st.sidebar.number_input("Biên lợi nhuận tối thiểu (%)", min_value=0.0, value=saved_auto_filters['margin_min'], step=1.0, key="margin_min_auto")
                 
                 # Bộ lọc EPS
-                eps_min_auto = st.sidebar.number_input("EPS tối thiểu (nghìn VND)", min_value=0.0, value=1000.0, step=100.0, key="eps_min_auto")
+                eps_min_auto = st.sidebar.number_input("EPS tối thiểu (nghìn VND)", min_value=0.0, value=saved_auto_filters['eps_min'], step=100.0, key="eps_min_auto")
+                
+                # Lưu trạng thái
+                save_auto_fundamental_filters(pe_min_auto, pe_max_auto, pb_min_auto, pb_max_auto, 
+                                            roe_min_auto, roa_min_auto, margin_min_auto, eps_min_auto)
                 
                 fundamental_filters = {
                     'pe_min': pe_min_auto,
@@ -733,20 +763,29 @@ elif option == "Hệ thống đề xuất cổ phiếu tự động":
 
             # Lựa chọn thời gian lấy dữ liệu
             today = datetime.date.today()
+            
+            # Lấy giá trị ngày đã lưu
+            default_start_1 = auto_state.get('start_date') or pd.to_datetime(ANALYSIS_START_DATE).date()
+            default_end_1 = auto_state.get('end_date') or pd.to_datetime(ANALYSIS_END_DATE).date()
+            
             start_date = st.sidebar.date_input(
                 "Ngày bắt đầu", 
-                value=pd.to_datetime(ANALYSIS_START_DATE).date(),
+                value=default_start_1,
                 min_value=pd.to_datetime(ANALYSIS_START_DATE).date(),
                 max_value=pd.to_datetime(ANALYSIS_END_DATE).date(),
                 key="start_date_1"
             )
             end_date = st.sidebar.date_input(
                 "Ngày kết thúc", 
-                value=pd.to_datetime(ANALYSIS_END_DATE).date(),
+                value=default_end_1,
                 min_value=pd.to_datetime(ANALYSIS_START_DATE).date(),
                 max_value=pd.to_datetime(ANALYSIS_END_DATE).date(),
                 key="end_date_1"
             )
+            
+            # Lưu trạng thái bộ lọc
+            save_auto_filter_state(selected_exchanges, selected_sectors, stocks_per_sector, 
+                                  filter_method, start_date, end_date)
             
             # Kiểm tra ngày bắt đầu và ngày kết thúc
             if start_date > today or end_date > today:

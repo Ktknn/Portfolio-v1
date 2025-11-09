@@ -1,6 +1,6 @@
 """
 Module ui_components.py
-Chứa các hàm giao diện Streamlit: hiển thị danh sách cổ phiếu, bộ lọc, thêm/xóa cổ phiếu.
+Chứa các hàm giao diện Streamlit: hiển thị danh sách mã cổ phiếu, bộ lọc, thêm/xóa mã cổ phiếu.
 """
 
 import streamlit as st
@@ -15,7 +15,7 @@ def display_selected_stocks(df):
     """
     if st.button("Xóa hết các cổ phiếu"):
         st.session_state.selected_stocks = []
-        st.success("Đã xóa hết tất cả cổ phiếu khỏi danh sách!")
+        st.success("Đã xóa hết tất cả mã cổ phiếu khỏi danh sách!")
     
     if st.session_state.selected_stocks:
         st.markdown("### Danh sách mã cổ phiếu đã chọn:")
@@ -42,7 +42,7 @@ def display_selected_stocks(df):
 
 def display_selected_stocks_2(df):
     """
-    Hiển thị danh sách mã cổ phiếu đã được chọn và cung cấp tùy chọn xóa từng mã hoặc toàn bộ (chế độ đề xuất).
+    Hiển thị danh sách mã cổ phiếu đã được chọn và cung cấp tuỳ chọn xóa từng mã hoặc toàn bộ (chế độ đề xuất).
     
     Args:
         df (pd.DataFrame): DataFrame chứa thông tin công ty
@@ -51,7 +51,7 @@ def display_selected_stocks_2(df):
     if st.button("Xóa hết các cổ phiếu trong danh mục"):
         if "selected_stocks_2" in st.session_state:
             st.session_state.selected_stocks_2 = []
-            st.success("Đã xóa hết tất cả cổ phiếu khỏi danh sách!")
+            st.success("Đã xóa hết tất cả mã cổ phiếu khỏi danh sách!")
         else:
             st.warning("Không có mã cổ phiếu nào để xóa.")
 

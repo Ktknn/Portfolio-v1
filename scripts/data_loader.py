@@ -226,17 +226,16 @@ def fetch_fundamental_data(symbol):
 
 def fetch_fundamental_data_batch(symbols):
     """
-    Lấy dữ liệu phân tích cơ bản cho nhiều cổ phiếu.
+    Lấy dữ liệu phân tích cơ bản cho nhiều mã cổ phiếu.
     
     Args:
         symbols (list): Danh sách mã cổ phiếu
-        
     Returns:
-        pd.DataFrame: DataFrame chứa dữ liệu phân tích cơ bản của các cổ phiếu
+        pd.DataFrame: DataFrame chứa dữ liệu phân tích cơ bản của các mã cổ phiếu
     """
     fundamental_list = []
     
-    print(f"\nĐang lấy dữ liệu phân tích cơ bản cho {len(symbols)} cổ phiếu...")
+    print(f"\nĐang lấy dữ liệu phân tích cơ bản cho {len(symbols)} mã cổ phiếu...")
     for i, symbol in enumerate(symbols, 1):
         print(f"[{i}/{len(symbols)}] Đang xử lý {symbol}...", end=" ")
         data = fetch_fundamental_data(symbol)
@@ -248,22 +247,21 @@ def fetch_fundamental_data_batch(symbols):
     
     if fundamental_list:
         df = pd.DataFrame(fundamental_list)
-        print(f"\n✓ Hoàn thành! Lấy dữ liệu thành công cho {len(df)}/{len(symbols)} cổ phiếu")
+        print(f"\n✓ Hoàn thành! Lấy dữ liệu thành công cho {len(df)}/{len(symbols)} mã cổ phiếu")
         return df
     else:
-        print(f"\n✗ Không thể lấy dữ liệu phân tích cơ bản cho bất kỳ cổ phiếu nào")
+        print(f"\n✗ Không thể lấy dữ liệu phân tích cơ bản cho bất kỳ mã cổ phiếu nào")
         return pd.DataFrame()
 
 
 def fetch_ohlc_data(ticker, start_date, end_date):
     """
-    Lấy dữ liệu OHLC (Open, High, Low, Close) cho một cổ phiếu.
+    Lấy dữ liệu OHLC (Open, High, Low, Close) cho một mã cổ phiếu.
     
     Args:
         ticker (str): Mã cổ phiếu
         start_date (str): Ngày bắt đầu (định dạng 'YYYY-MM-DD')
         end_date (str): Ngày kết thúc (định dạng 'YYYY-MM-DD')
-    
     Returns:
         pd.DataFrame: DataFrame chứa dữ liệu OHLC với các cột time, open, high, low, close, volume
     """
