@@ -1673,7 +1673,7 @@ def plot_hrp_dendrogram(data, weights):
         ### Cách đọc biểu đồ Dendrogram:
         
         **1. Cấu trúc hình cây:**
-    - Mỗi mã cổ phiếu là một nhánh ở dưới cùng
+        - Mỗi mã cổ phiếu là một nhánh ở dưới cùng
         - Các nhánh được kết nối với nhau qua các điểm nối
         - Điểm nối càng thấp → Tương quan càng cao
         

@@ -7,3 +7,4 @@ PyPortfolioOpt
 scipy
 pandas-ta
 statsmodels
+google-generativeai

@@ -170,23 +170,13 @@ def calculate_metrics(data):
 def fetch_fundamental_data(symbol):
     """
     Lấy dữ liệu phân tích cơ bản của một cổ phiếu từ vnstock.
+    (Chỉ dùng cho tính năng tổng quan thị trường)
     
     Args:
         symbol (str): Mã cổ phiếu
         
     Returns:
         dict: Dictionary chứa các chỉ số phân tích cơ bản
-            {
-                'symbol': str,
-                'pe': float,      # P/E ratio
-                'pb': float,      # P/B ratio  
-                'eps': float,     # EPS (Thu nhập trên mỗi cổ phiếu)
-                'roe': float,     # ROE (%) 
-                'roa': float,     # ROA (%)
-                'profit_margin': float,  # Biên lợi nhuận (%)
-                'revenue': float, # Doanh thu (tỷ VND)
-                'profit': float   # Lợi nhuận (tỷ VND)
-            }
     """
     try:
         stock = Vnstock().stock(symbol=symbol, source='VCI')
@@ -227,6 +217,7 @@ def fetch_fundamental_data(symbol):
 def fetch_fundamental_data_batch(symbols):
     """
     Lấy dữ liệu phân tích cơ bản cho nhiều mã cổ phiếu.
+    (Chỉ dùng cho tính năng tổng quan thị trường)
     
     Args:
         symbols (list): Danh sách mã cổ phiếu

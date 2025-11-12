@@ -8,3 +8,6 @@ ANALYSIS_START_DATE = (datetime.now() - timedelta(days=365*3)).strftime("%Y-%m-%
 DEFAULT_MARKET = "HOSE"  # Sàn giao dịch mặc định
 CACHE_EXPIRY_HOURS = 24  # Thời gian hết hạn cache (giờ)
 DEFAULT_INVESTMENT_AMOUNT = 1000000  # Số tiền đầu tư mặc định (VND)
+
+# Cấu hình Google Gemini API cho chatbot
+GEMINI_API_KEY = "AIzaSyBP45_fkp7_RGb6twUI3bUH66z6nT0SF1M"
