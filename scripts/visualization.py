@@ -883,7 +883,7 @@ def plot_max_sharpe_with_cal(ret_arr, vol_arr, sharpe_arr, all_weights, tickers,
         
         **Ý nghĩa thực tế:**
         - Điểm trên CAL gần điểm phi rủi ro → Đầu tư bảo thủ (nhiều tài sản phi rủi ro)
-    - Điểm Max Sharpe → Đầu tư 100% vào danh mục mã cổ phiếu tối ưu
+        - Điểm Max Sharpe → Đầu tư 100% vào danh mục mã cổ phiếu tối ưu
         - Điểm xa hơn Max Sharpe trên CAL → Đầu tư margin (vay nợ để đầu tư nhiều hơn)
         
         **Độ dốc của CAL** chính là **Tỷ lệ Sharpe**, cho biết phần bù rủi ro (excess return) trên mỗi đơn vị rủi ro.
@@ -1671,33 +1671,32 @@ def plot_hrp_dendrogram(data, weights):
     with st.expander("Ý nghĩa của Biểu đồ Dendrogram"):
         st.markdown("""
         ### Cách đọc biểu đồ Dendrogram:
-        
-        **1. Cấu trúc hình cây:**
-        - Mỗi mã cổ phiếu là một nhánh ở dưới cùng
-        - Các nhánh được kết nối với nhau qua các điểm nối
-        - Điểm nối càng thấp → Tương quan càng cao
-        
-        **2. Nhóm tài sản:**
-    - **Các mã cổ phiếu nằm trên cùng một nhánh gần gốc**: Có tương quan cao nhất với nhau
-    - **Các mã cổ phiếu ở các nhánh xa nhau**: Có mối tương quan thấp, đa dạng hóa tốt
-        
-        **3. Chiều cao của điểm nối (Trục Y):**
-        - Giá trị thấp (gần 0): Hai tài sản rất giống nhau về biến động giá
-        - Giá trị cao: Hai nhóm tài sản khác biệt nhau nhiều
-        
-        **4. Ứng dụng trong đầu tư:**
-    - Giúp nhận biết nhóm mã cổ phiếu có xu hướng tăng/giảm cùng nhau
-    - Tránh đầu tư quá nhiều vào các mã cổ phiếu trong cùng một nhóm (cùng nhánh)
-    - Chọn mã cổ phiếu từ các nhánh khác nhau để giảm rủi ro
-        
-        **5. Tư duy của mô hình HRP:**
-        - Mô hình sử dụng cấu trúc này để phân bổ vốn thông minh
-        - Các nhóm tài sản có tương quan cao sẽ được phân bổ ít vốn hơn
-        - Các nhóm độc lập được phân bổ nhiều vốn hơn để đa dạng hóa
-        
-    **💡 Ví dụ:** Nếu 3 mã cổ phiếu ngân hàng nằm trên cùng một nhánh thấp, điều này có nghĩa 
-    chúng biến động rất giống nhau. Thay vì đầu tư 30% vào mỗi mã cổ phiếu, mô hình HRP sẽ 
-    phân bổ tổng cộng 30% cho cả nhóm và tăng phân bổ cho các mã cổ phiếu ở nhóm khác.
+        **1. Cấu trúc hình cây:**  
+        - Mỗi mã cổ phiếu là một nhánh ở dưới cùng  
+        - Các nhánh được kết nối với nhau qua các điểm nối  
+        - Điểm nối càng thấp → Tương quan càng cao  
+
+        **2. Nhóm tài sản:**  
+        - **Các mã cổ phiếu nằm trên cùng một nhánh gần gốc:** Có tương quan cao nhất với nhau  
+        - **Các mã cổ phiếu ở các nhánh xa nhau:** Có mối tương quan thấp, đa dạng hóa tốt  
+
+        **3. Chiều cao của điểm nối (Trục Y):**  
+        - Giá trị thấp (gần 0): Hai tài sản rất giống nhau về biến động giá  
+        - Giá trị cao: Hai nhóm tài sản khác biệt nhau nhiều  
+
+        **4. Ứng dụng trong đầu tư:**  
+        - Giúp nhận biết nhóm mã cổ phiếu có xu hướng tăng/giảm cùng nhau  
+        - Tránh đầu tư quá nhiều vào các mã cổ phiếu trong cùng một nhóm (cùng nhánh)  
+        - Chọn mã cổ phiếu từ các nhánh khác nhau để giảm rủi ro  
+
+        **5. Tư duy của mô hình HRP:**  
+        - Mô hình sử dụng cấu trúc này để phân bổ vốn thông minh  
+        - Các nhóm tài sản có tương quan cao sẽ được phân bổ ít vốn hơn  
+        - Các nhóm độc lập được phân bổ nhiều vốn hơn để đa dạng hóa  
+
+        **💡 Ví dụ:**  
+        Nếu 3 mã cổ phiếu ngân hàng nằm trên cùng một nhánh thấp, điều này có nghĩa chúng biến động rất giống nhau.  
+        Thay vì đầu tư 30% vào mỗi mã cổ phiếu, mô hình HRP sẽ phân bổ tổng cộng 30% cho cả nhóm và tăng phân bổ cho các mã cổ phiếu ở nhóm khác.
         """)
     
     # Hiển thị ma trận tương quan

@@ -10,13 +10,7 @@ def get_welcome_message():
     """Trả về tin nhắn chào mừng"""
     return """Xin chào! 👋
 
-Tôi là trợ lý AI của Portfolio Dashboard. Tôi có thể giúp bạn:
-- 📊 Giải thích các chỉ số tài chính (Sharpe Ratio, volatility, return...)
-- 💼 Tư vấn về chiến lược đầu tư và phân bổ danh mục
-- ⚠️ Phân tích rủi ro và lợi nhuận
-- 🎯 Giải đáp các câu hỏi về tối ưu hóa danh mục
-
-Hãy chọn câu hỏi gợi ý bên dưới hoặc đặt câu hỏi của bạn!"""
+Tôi là trợ lý AI của Portfolio Dashboard. Bạn cần giúp gì hôm nay? Hãy thử bắt đầu bằng việc:"""
 
 def _clear_chat_history():
     """Xóa hoàn toàn lịch sử chat hiện tại."""
@@ -137,15 +131,23 @@ def render_chatbot_sidebar(portfolio_context=None):
             
             # Hiển thị các câu hỏi gợi ý nếu có ít hơn 2 tin nhắn (chỉ có welcome message)
             if len(st.session_state.chat_messages) <= 1 and st.session_state.show_quick_questions and not st.session_state.is_thinking:
-                st.markdown("---")
-                st.markdown("**Câu hỏi gợi ý:**")
                 quick_questions = create_quick_question_buttons()
-                
-                for i, question in enumerate(quick_questions):
-                    if st.button(question, key=f"quick_q_{i}", use_container_width=True, disabled=st.session_state.is_thinking, type="secondary"):
-                        handle_user_message(question, portfolio_context, chat_parent=chat_container)
-                        st.session_state.show_quick_questions = False
-                        st.rerun()
+
+                for idx in range(0, len(quick_questions), 2):
+                    row_questions = quick_questions[idx:idx + 2]
+                    cols = st.columns(len(row_questions))
+                    for col_idx, question in enumerate(row_questions):
+                        with cols[col_idx]:
+                            if st.button(
+                                question,
+                                key=f"quick_q_{idx + col_idx}",
+                                use_container_width=True,
+                                disabled=st.session_state.is_thinking,
+                                type="secondary"
+                            ):
+                                handle_user_message(question, portfolio_context, chat_parent=chat_container)
+                                st.session_state.show_quick_questions = False
+                                st.rerun()
         
         # Input chat
         user_input = st.chat_input("Nhập câu hỏi của bạn...", disabled=st.session_state.is_thinking)
@@ -368,21 +370,24 @@ def render_chatbot_page():
         
         # Hiển thị các câu hỏi gợi ý dưới dạng chips có thể click
         if len(st.session_state.chat_messages) <= 1 and st.session_state.show_quick_questions and not st.session_state.is_thinking:
-            st.markdown("---")
-            st.markdown("**💡 Câu hỏi gợi ý - Nhấp để bắt đầu:**")
-            
             quick_questions = create_quick_question_buttons()
-            
-            # Tạo layout grid cho các chips
-            cols = st.columns(2)
-            for i, question in enumerate(quick_questions):
-                col_idx = i % 2
-                with cols[col_idx]:
-                    if st.button(question, key=f"page_quick_q_{i}", use_container_width=True, disabled=st.session_state.is_thinking, type="secondary"):
-                        portfolio_context = get_current_portfolio_context()
-                        handle_user_message(question, portfolio_context, chat_parent=chat_container)
-                        st.session_state.show_quick_questions = False
-                        st.rerun()
+
+            for idx in range(0, len(quick_questions), 2):
+                row_questions = quick_questions[idx:idx + 2]
+                cols = st.columns(len(row_questions))
+                for col_idx, question in enumerate(row_questions):
+                    with cols[col_idx]:
+                        if st.button(
+                            question,
+                            key=f"page_quick_q_{idx + col_idx}",
+                            use_container_width=True,
+                            disabled=st.session_state.is_thinking,
+                            type="secondary"
+                        ):
+                            portfolio_context = get_current_portfolio_context()
+                            handle_user_message(question, portfolio_context, chat_parent=chat_container)
+                            st.session_state.show_quick_questions = False
+                            st.rerun()
     
     # Input chat ở ngoài container để không bị cuộn
     user_input = st.chat_input("Nhập câu hỏi của bạn...", disabled=st.session_state.is_thinking)

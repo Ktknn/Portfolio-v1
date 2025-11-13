@@ -3,10 +3,25 @@ Chatbot Service - Xử lý logic AI chatbot cho ứng dụng danh mục đầu t
 Sử dụng Google Gemini API (miễn phí)
 """
 
-import pandas as pd
-import google.generativeai as genai
+import os
 from datetime import datetime
+import google.generativeai as genai
+import pandas as pd
 import streamlit as st
+
+
+def load_gemini_api_key() -> str:
+    """Ưu tiên sử dụng biến môi trường rồi tới tệp bí mật cục bộ."""
+    env_key = os.getenv("GEMINI_API_KEY")
+    if env_key:
+        return env_key
+
+    try:
+        from .secret_config import GEMINI_API_KEY as secret_key  # type: ignore
+
+        return secret_key
+    except ImportError:
+        return ""
 
 
 class PortfolioChatbot:
@@ -225,8 +240,8 @@ def create_quick_question_buttons():
     """
     quick_questions = [
         "Giải thích mô hình Markowitz",
-        "Làm sao để giảm rủi ro danh mục?",
+        "Làm sao để giảm rủi ro?",
+        "Các chỉ số tài chính quan trọng",
         "Nên đa dạng hóa bao nhiêu cổ phiếu?",
-        "Các chỉ số tài chính quan trọng là gì?",
     ]
     return quick_questions
