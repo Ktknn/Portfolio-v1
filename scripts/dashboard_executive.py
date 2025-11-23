@@ -939,100 +939,78 @@ def generate_inflation_heatmap(heatmap_df: pd.DataFrame):
 
 
 # ==================== KHU VỰC HIỂN THỊ CHÍNH ====================
-def render_bang_dieu_hanh(sector_df=None, data_loader=None, overview_renderer=None):
-    """Hiển thị bảng điều hành chính và (tuỳ chọn) phân tích ngành chi tiết."""
+def render_bang_dieu_hanh():
+    """Hiển thị bảng điều hành chính cho tab Tổng quan Thị trường & Ngành."""
     st.markdown(DASHBOARD_STYLE, unsafe_allow_html=True)
 
-    # Header
     st.markdown('<div class="dashboard-header">PHÂN TÍCH THỊ TRƯỜNG & NGÀNH</div>', unsafe_allow_html=True)
     st.markdown('<div class="dashboard-subtitle">Dữ liệu tổng hợp theo tháng & cập nhật theo thời gian thực</div>', unsafe_allow_html=True)
+
     with st.spinner("Đang tải dữ liệu tổng quan..."):
         overview_data = load_overview_data()
 
+    with st.spinner("Đang tải dữ liệu thị trường..."):
+        render_realtime_market_overview()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.plotly_chart(
+            generate_index_comparison_chart(overview_data.get('index_history')), use_container_width=True
+        )
+        market_cap_placeholder = st.empty()
+
+    with col2:
+        st.plotly_chart(
+            generate_vn_index_trend(overview_data.get('vnindex_history')), use_container_width=True
+        )
+        foreign_flow_placeholder = st.empty()
+
+    with col3:
+        sector_perf_placeholder = st.empty()
+        liquidity_placeholder = st.empty()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col4, col5 = st.columns(2)
+    correlation_placeholder = col4.empty()
+    heatmap_placeholder = col5.empty()
+
     detail_data = None
-    
-    # Thêm tab để chuyển đổi giữa các bảng hiển thị
-    tab1, tab2 = st.tabs(["Dashboard tổng quan", "Phân tích ngành chi tiết"])
-    
-    with tab1:
-        # Hàng 1: KPI về chỉ số thị trường (real-time)
-        with st.spinner("Đang tải dữ liệu thị trường..."):
-            render_realtime_market_overview()
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Hàng 2: Các biểu đồ chính (3 cột)
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.plotly_chart(
-                generate_index_comparison_chart(overview_data.get('index_history')), use_container_width=True
-            )
-            market_cap_placeholder = st.empty()
-        
-        with col2:
-            st.plotly_chart(
-                generate_vn_index_trend(overview_data.get('vnindex_history')), use_container_width=True
-            )
-            foreign_flow_placeholder = st.empty()
-        
-        with col3:
-            sector_perf_placeholder = st.empty()
-            liquidity_placeholder = st.empty()
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Hàng 3: Các biểu đồ bổ sung
-        col4, col5 = st.columns(2)
+    detail_spinner_placeholder = st.empty()
+    with detail_spinner_placeholder.container():
+        with st.spinner("Đang tải dữ liệu ngành & dòng tiền..."):
+            detail_data = load_detail_data()
+    detail_spinner_placeholder.empty()
 
-        correlation_placeholder = col4.empty()
-        heatmap_placeholder = col5.empty()
-
-        detail_spinner_placeholder = st.empty()
-        with detail_spinner_placeholder.container():
-            with st.spinner("Đang tải dữ liệu ngành & dòng tiền..."):
-                detail_data = load_detail_data()
-        detail_spinner_placeholder.empty()
-
-        if detail_data:
-            market_cap_placeholder.plotly_chart(
-                generate_market_cap_treemap(detail_data.get('market_cap')), use_container_width=True
-            )
-            foreign_flow_placeholder.plotly_chart(
-                generate_net_foreign_buying(detail_data.get('foreign_flow')), use_container_width=True
-            )
-            sector_perf_placeholder.plotly_chart(
-                generate_sector_performance(detail_data.get('sector_perf')), use_container_width=True
-            )
-            liquidity_placeholder.plotly_chart(
-                generate_inflation_correlation(detail_data.get('liquidity')), use_container_width=True
-            )
-            correlation_placeholder.plotly_chart(
-                generate_correlation_matrix(detail_data.get('correlation')), use_container_width=True
-            )
-            heatmap_placeholder.plotly_chart(
-                generate_inflation_heatmap(detail_data.get('sector_heatmap')), use_container_width=True
-            )
-        else:
-            market_cap_placeholder.info("Không thể tải dữ liệu ngành.")
-            foreign_flow_placeholder.info("Không thể tải dữ liệu ngành.")
-            sector_perf_placeholder.info("Không thể tải dữ liệu ngành.")
-            liquidity_placeholder.info("Không thể tải dữ liệu ngành.")
-            correlation_placeholder.info("Không thể tải dữ liệu ngành.")
-            heatmap_placeholder.info("Không thể tải dữ liệu ngành.")
-    
-    with tab2:
-        sector_snapshot = detail_data.get('sector_snapshot') if detail_data else None
-        if overview_renderer and sector_df is not None and data_loader is not None:
-            if sector_snapshot is not None and not sector_snapshot.empty:
-                st.caption("Dữ liệu ngành mới nhất đã được tải, có thể dùng cho drill-down chi tiết.")
-            overview_renderer(sector_df, data_loader)
-        else:
-            st.info("Chức năng phân tích ngành chi tiết yêu cầu dữ liệu thị trường.")
-        
-        # Có thể import và gọi các hàm từ dashboard.py gốc
-        # from scripts.dashboard import main_manual_selection, main_auto_selection
-        # main_manual_selection()
+    if detail_data:
+        market_cap_placeholder.plotly_chart(
+            generate_market_cap_treemap(detail_data.get('market_cap')), use_container_width=True
+        )
+        foreign_flow_placeholder.plotly_chart(
+            generate_net_foreign_buying(detail_data.get('foreign_flow')), use_container_width=True
+        )
+        sector_perf_placeholder.plotly_chart(
+            generate_sector_performance(detail_data.get('sector_perf')), use_container_width=True
+        )
+        liquidity_placeholder.plotly_chart(
+            generate_inflation_correlation(detail_data.get('liquidity')), use_container_width=True
+        )
+        correlation_placeholder.plotly_chart(
+            generate_correlation_matrix(detail_data.get('correlation')), use_container_width=True
+        )
+        heatmap_placeholder.plotly_chart(
+            generate_inflation_heatmap(detail_data.get('sector_heatmap')), use_container_width=True
+        )
+    else:
+        market_cap_placeholder.info("Không thể tải dữ liệu ngành.")
+        foreign_flow_placeholder.info("Không thể tải dữ liệu ngành.")
+        sector_perf_placeholder.info("Không thể tải dữ liệu ngành.")
+        liquidity_placeholder.info("Không thể tải dữ liệu ngành.")
+        correlation_placeholder.info("Không thể tải dữ liệu ngành.")
+        heatmap_placeholder.info("Không thể tải dữ liệu ngành.")
 
 
 def main():

@@ -6,6 +6,7 @@ Chứa các hàm tối ưu hóa danh mục đầu tư: Markowitz, Max Sharpe, Mi
 import numpy as np
 import pandas as pd
 import logging
+import streamlit as st
 from pypfopt import (
     EfficientFrontier, 
     risk_models, 
@@ -244,7 +245,21 @@ def markowitz_optimization(price_data, total_investment, get_latest_prices_func)
     """
     logger.info(f"[MARKOWITZ] Nhan total_investment: {total_investment:,.0f} VND")
     
-    tickers = price_data.columns.tolist()
+    # Tiền xử lý dữ liệu giá để đảm bảo là số và có đủ quan sát
+    cleaned_prices = price_data.copy()
+    cleaned_prices = cleaned_prices.apply(pd.to_numeric, errors='coerce')
+    cleaned_prices = cleaned_prices.ffill().bfill()
+    cleaned_prices = cleaned_prices.dropna(axis=1, how='all')
+
+    # Loại bỏ cột không đủ dữ liệu (ít hơn 2 quan sát hữu ích)
+    cleaned_prices = cleaned_prices.loc[:, cleaned_prices.apply(lambda col: col.notna().sum() >= 2)]
+
+    if cleaned_prices.empty or cleaned_prices.shape[0] < 2:
+        logger.error("Du lieu gia khong hop le hoac khong du quan sat de tinh toan")
+        st.error("Không đủ dữ liệu giá hợp lệ để chạy mô hình Markowitz.")
+        return None
+
+    tickers = cleaned_prices.columns.tolist()
     num_assets = len(tickers)
 
     if num_assets == 0:
@@ -252,7 +267,7 @@ def markowitz_optimization(price_data, total_investment, get_latest_prices_func)
         print("Danh sách mã cổ phiếu đã chọn không hợp lệ. Vui lòng kiểm tra lại.")
         return None
 
-    log_ret = np.log(price_data / price_data.shift(1)).dropna()
+    log_ret = np.log(cleaned_prices / cleaned_prices.shift(1)).dropna()
     n_portfolios = 10000
     all_weights = np.zeros((n_portfolios, num_assets))
     ret_arr = np.zeros(n_portfolios)

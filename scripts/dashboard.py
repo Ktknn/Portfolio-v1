@@ -58,9 +58,6 @@ from scripts.ui_components import (
     display_selected_stocks,
     display_selected_stocks_2
 )
-from scripts.market_overview import (
-    show_sector_overview_page
-)
 from scripts.dashboard_executive import render_bang_dieu_hanh
 from scripts.session_manager import (
     initialize_session_state,
@@ -421,11 +418,7 @@ if option == "Trợ lý AI":
         render_chat_controls(controls_container, key_prefix="main_sidebar")
 
 elif option == "Tổng quan Thị trường & Ngành":
-    render_bang_dieu_hanh(
-        sector_df=df,
-        data_loader=data_loader_module,
-        overview_renderer=show_sector_overview_page
-    )
+    render_bang_dieu_hanh()
 
 elif option == "Tự chọn mã cổ phiếu":
     # Giao diện người dùng để lọc từ file CSV

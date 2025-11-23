@@ -1,18 +1,20 @@
 """Data fetching utilities for CSV files and market APIs."""
 
 import warnings
-
+# Suppress specific warning about pkg_resources
 warnings.filterwarnings('ignore', message='pkg_resources is deprecated')
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import datetime
 import os
 from functools import lru_cache
-from typing import Iterable, List, Optional, Tuple
-
+from typing import Iterable, List, Optional, Tuple, Dict
 import pandas as pd
+import pytz  # Recommended for timezone handling
 from vnstock import Vnstock
 
+# Thiết lập múi giờ Việt Nam
+VN_TZ = pytz.timezone('Asia/Ho_Chi_Minh')
 
 def fetch_data_from_csv(file_path: str) -> pd.DataFrame:
     """Load a CSV file containing company metadata."""
@@ -25,11 +27,9 @@ def fetch_data_from_csv(file_path: str) -> pd.DataFrame:
         print(f"Lỗi khi đọc dữ liệu từ file CSV: {exc}")
         return pd.DataFrame()
 
-
 def create_vnstock_instance():
-    """Return a default Vnstock instance used across the app."""
+    """Return a default Vnstock instance."""
     return Vnstock().stock(symbol='VN30F1M', source='VCI')
-
 
 def _normalize_symbols(symbols: Iterable[str]) -> Tuple[List[str], List[str]]:
     """Return uppercase symbols without duplicates and list of discarded ones."""
@@ -47,167 +47,177 @@ def _normalize_symbols(symbols: Iterable[str]) -> Tuple[List[str], List[str]]:
         unique.append(ticker)
     return unique, duplicates
 
-
 @lru_cache(maxsize=128)
-def _fetch_single_stock_cached(ticker: str, start_date: str, end_date: str) -> Tuple[pd.DataFrame, Optional[str]]:
-    """Fetch a single ticker history and cache the response per date range."""
+def _fetch_single_stock_cached(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """
+    Fetch a single ticker history and cache the response.
+    Returns a DataFrame with DatetimeIndex.
+    """
     try:
         stock = Vnstock().stock(symbol=ticker, source='VCI')
         stock_data = stock.quote.history(start=str(start_date), end=str(end_date))
-    except Exception as exc:  # pragma: no cover - network/IO
+    except Exception as exc:
         error_msg = str(exc)
         if "RetryError" in error_msg:
             error_msg = "Không thể kết nối đến server"
         elif "ValueError" in error_msg:
             error_msg = "Dữ liệu không hợp lệ"
-        return pd.DataFrame(), error_msg
+        raise RuntimeError(error_msg) from exc
 
     if stock_data is None or stock_data.empty:
-        return pd.DataFrame(), "Không có dữ liệu"
+        raise ValueError("Không có dữ liệu")
 
-    stock_data = stock_data[['time', 'close']].copy()
-    stock_data['time'] = pd.to_datetime(stock_data['time'])
-    return stock_data.set_index('time'), None
-
+    # Giữ lại time và close
+    df = stock_data[['time', 'close']].copy()
+    df['time'] = pd.to_datetime(df['time'])
+    df = df.set_index('time')
+    
+    # Quan trọng: Rename cột ngay tại đây hoặc bên ngoài đều được, 
+    # nhưng để cache hiệu quả thì nên giữ nguyên raw rồi rename sau.
+    return df
 
 def fetch_stock_data2(symbols: List[str], start_date: str, end_date: str,
                       verbose: bool = True) -> Tuple[pd.DataFrame, List[str]]:
-    """Download historical prices for a list of tickers (deduped + cached)."""
-    data = pd.DataFrame()
-    skipped_tickers: List[str] = []
-
+    """
+    Download historical prices for a list of tickers using parallel processing.
+    Optimized using pd.concat instead of iterative merge.
+    """
     unique_symbols, duplicates = _normalize_symbols(symbols)
+    skipped_tickers: List[str] = []
+    
+    start_str = str(start_date)
+    end_str = str(end_date)
 
     if duplicates and verbose:
-        dedup_list = ", ".join(sorted(set(duplicates)))
-        print(f"Bỏ qua mã trùng lặp: {dedup_list}")
+        print(f"Bỏ qua mã trùng lặp: {', '.join(sorted(set(duplicates)))}")
 
     if not unique_symbols:
         if verbose:
-            print("Danh sách cổ phiếu rỗng, không có dữ liệu để tải")
-        return data, skipped_tickers
-
-    def fetch_single_stock(ticker: str):
-        cached_data, error = _fetch_single_stock_cached(ticker, start_date, end_date)
-        if error:
-            if verbose:
-                print(f"Lỗi khi lấy dữ liệu {ticker}: {error}")
-            return ticker, pd.DataFrame(), error
-        # Copy to avoid mutating cached DataFrame when renaming columns
-        result = cached_data.copy().rename(columns={'close': ticker})
-        return ticker, result, None
+            print("Danh sách cổ phiếu rỗng.")
+        return pd.DataFrame(), skipped_tickers
 
     if verbose:
         print(f"Đang tải dữ liệu song song cho {len(unique_symbols)} cổ phiếu...")
 
+    # Hàm worker nội bộ
+    def fetch_worker(ticker: str):
+        try:
+            # Lấy từ cache (trả về tham chiếu)
+            cached_df = _fetch_single_stock_cached(ticker, start_str, end_str)
+            # BẮT BUỘC .copy() để không làm hỏng cache khi sửa tên cột
+            df_copy = cached_df.copy()
+            df_copy.columns = [ticker] # Rename 'close' -> 'TICKER'
+            return ticker, df_copy, None
+        except Exception as exc:
+            return ticker, None, str(exc)
+
+    results = []
     max_workers = min(8, max(1, len(unique_symbols)))
+    
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_ticker = {
-            executor.submit(fetch_single_stock, ticker): ticker for ticker in unique_symbols
+            executor.submit(fetch_worker, ticker): ticker 
+            for ticker in unique_symbols
         }
 
         for i, future in enumerate(as_completed(future_to_ticker), 1):
             ticker = future_to_ticker[future]
-            if verbose:
-                print(f"[{i}/{len(unique_symbols)}] Đang tải {ticker}...", end=" ")
-
-            try:
-                ticker_name, result, error = future.result()
-            except Exception as exc:  # pragma: no cover
-                error = str(exc)
-                ticker_name = ticker
-                result = pd.DataFrame()
-
-            if not result.empty:
+            tk_name, df_res, err = future.result()
+            
+            if df_res is not None and not df_res.empty:
+                results.append(df_res)
                 if verbose:
-                    print("✓ Thành công")
-                if data.empty:
-                    data = result
-                else:
-                    data = pd.merge(data, result, how='outer', on='time')
+                    print(f"\r[{i}/{len(unique_symbols)}] {ticker}: ✓ Thành công", end="")
             else:
+                skipped_tickers.append(tk_name)
                 if verbose:
-                    print(f"✗ Bỏ qua ({error})")
-                skipped_tickers.append(ticker_name)
+                    print(f"\r[{i}/{len(unique_symbols)}] {ticker}: ✗ Bỏ qua ({err})", end="")
 
-    if not data.empty:
-        data = data.interpolate(method='linear', limit_direction='both')
+    print("") # Xuống dòng sau khi chạy xong loop
+
+    if not results:
         if verbose:
-            print(f"\n✓ Hoàn thành! Tải thành công {len(data.columns)}/{len(unique_symbols)} cổ phiếu")
-    elif verbose:
-        print(f"\n✗ Không thể tải dữ liệu cho bất kỳ cổ phiếu nào")
+            print("✗ Không thể tải dữ liệu cho bất kỳ cổ phiếu nào.")
+        return pd.DataFrame(), skipped_tickers
 
-    return data, skipped_tickers
+    # OPTIMIZATION: Dùng concat axis=1 thay vì merge loop
+    if verbose:
+        print("Đang tổng hợp dữ liệu...")
+    
+    try:
+        # Concat sẽ tự động align theo Index (Time)
+        final_data = pd.concat(results, axis=1)
+        # Sort theo thời gian
+        final_data = final_data.sort_index()
+        # Interpolate để điền khuyết thiếu (nếu cần)
+        final_data = final_data.interpolate(method='linear', limit_direction='both')
+        
+        if verbose:
+            print(f"✓ Hoàn thành! Tải thành công {len(final_data.columns)}/{len(unique_symbols)} cổ phiếu")
+        
+        return final_data, skipped_tickers
+
+    except Exception as e:
+        print(f"Lỗi khi gộp dữ liệu: {e}")
+        return pd.DataFrame(), skipped_tickers
 
 
 @lru_cache(maxsize=256)
 def _fetch_latest_price_single(ticker: str, start_date: str, end_date: str) -> Tuple[Optional[float], Optional[str]]:
-    """Return latest close price (in VND) for ticker and cache by date range."""
+    """Return latest close price (in VND) for ticker."""
     try:
         stock = Vnstock().stock(symbol=ticker, source='VCI')
         stock_data = stock.quote.history(start=str(start_date), end=str(end_date))
-    except Exception as exc:  # pragma: no cover - network/IO
-        error_msg = str(exc)
-        lowered = error_msg.lower()
-        if "timeout" in lowered:
-            error_msg = "Timeout khi kết nối API"
-        elif "retryerror" in lowered:
-            error_msg = "Không thể kết nối"
-        elif "valueerror" in lowered:
-            error_msg = "Dữ liệu không hợp lệ"
-        return None, error_msg
+    except Exception as exc:
+        return None, str(exc)
 
     if stock_data is None or stock_data.empty:
         return None, "Không có dữ liệu"
 
-    latest_price = float(stock_data['close'].iloc[-1]) * 1000
-    return latest_price, None
+    # Lấy giá đóng cửa mới nhất
+    try:
+        # Giả sử dữ liệu API trả về đơn vị nghìn đồng (thường thấy ở VNStock/SSI/VCI)
+        # Cần kiểm tra kỹ nguồn dữ liệu. Code cũ nhân 1000.
+        latest_price = float(stock_data['close'].iloc[-1]) * 1000
+        return latest_price, None
+    except Exception as e:
+        return None, f"Lỗi parse giá: {e}"
 
 
-def get_latest_prices(tickers: List[str]) -> dict:
-    """Fetch the latest close price for each ticker using cached parallel calls."""
-    latest_prices: dict = {}
-    end_date = datetime.date.today()
-    start_date = end_date - datetime.timedelta(days=7)
+def get_latest_prices(tickers: List[str]) -> Dict[str, float]:
+    """Fetch the latest close price for each ticker."""
+    latest_prices: Dict[str, float] = {}
+    
+    # Sử dụng giờ VN để đảm bảo ngày "hôm nay" chính xác
+    now = datetime.datetime.now(VN_TZ)
+    end_date = now.date()
+    start_date = end_date - datetime.timedelta(days=7) # Lấy dư ra 1 tuần đề phòng ngày lễ/cuối tuần
 
-    unique_tickers, duplicates = _normalize_symbols(tickers)
-    total_requested = len(tickers)
-
-    if duplicates:
-        dup_list = ", ".join(sorted(set(duplicates)))
-        print(f"Bỏ qua mã trùng lặp khi lấy giá: {dup_list}")
-
+    unique_tickers, _ = _normalize_symbols(tickers)
+    
     if not unique_tickers:
-        print("Danh sách cổ phiếu rỗng, không có dữ liệu để lấy giá")
         return latest_prices
 
     print(f"\nĐang lấy giá mới nhất cho {len(unique_tickers)} cổ phiếu...")
 
-    def worker(ticker: str) -> Tuple[str, Optional[float], Optional[str]]:
-        price, error = _fetch_latest_price_single(ticker, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
-        return ticker, price, error
+    def worker(ticker: str):
+        p, e = _fetch_latest_price_single(
+            ticker, 
+            start_date.strftime("%Y-%m-%d"), 
+            end_date.strftime("%Y-%m-%d")
+        )
+        return ticker, p, e
 
-    max_workers = min(4, max(1, len(unique_tickers)))
+    max_workers = min(8, max(1, len(unique_tickers)))
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(worker, ticker): ticker for ticker in unique_tickers}
-        for i, future in enumerate(as_completed(futures), 1):
-            ticker = futures[future]
-            try:
-                symbol, price, error = future.result()
-            except Exception as exc:  # pragma: no cover
-                price = None
-                error = str(exc)
-                symbol = ticker
-
+        futures = {executor.submit(worker, t): t for t in unique_tickers}
+        for future in as_completed(futures):
+            sym, price, err = future.result()
             if price is not None:
-                latest_prices[symbol] = price
-                print(f"[{i}/{len(unique_tickers)}] {symbol}: {price:,.0f} VND ✓")
-            else:
-                print(f"[{i}/{len(unique_tickers)}] {symbol}: Lỗi - {error} ✗")
+                latest_prices[sym] = price
+            # Có thể print log lỗi nếu cần thiết nhưng để gọn output ta bỏ qua
 
-    print(f"✓ Hoàn thành! Lấy giá thành công cho {len(latest_prices)}/{len(unique_tickers)} cổ phiếu\n")
-    if total_requested != len(unique_tickers):
-        print(f"(Bao gồm {total_requested - len(unique_tickers)} mã trùng lặp đã bỏ qua)")
+    print(f"✓ Hoàn thành! Lấy giá thành công cho {len(latest_prices)}/{len(unique_tickers)} cổ phiếu")
     return latest_prices
 
 
@@ -216,147 +226,174 @@ def fetch_ohlc_data(ticker: str, start_date: str, end_date: str) -> pd.DataFrame
     try:
         stock = Vnstock().stock(symbol=ticker, source='VCI')
         stock_data = stock.quote.history(start=str(start_date), end=str(end_date))
+        
         if stock_data is None or stock_data.empty:
             print(f"Không có dữ liệu OHLC cho {ticker}")
             return pd.DataFrame()
 
         required_columns = ['time', 'open', 'high', 'low', 'close', 'volume']
-        available_columns = [col for col in required_columns if col in stock_data.columns]
-        ohlc_data = stock_data[available_columns].copy()
+        # Chuẩn hóa tên cột về chữ thường để tránh lỗi case-sensitive
+        stock_data.columns = [c.lower() for c in stock_data.columns]
+        
+        available = [col for col in required_columns if col in stock_data.columns]
+        ohlc_data = stock_data[available].copy()
         ohlc_data['time'] = pd.to_datetime(ohlc_data['time'])
         return ohlc_data
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         print(f"Lỗi khi lấy dữ liệu OHLC cho {ticker}: {exc}")
         return pd.DataFrame()
 
 
-def _resolve_date_range(start_date: Optional[str], end_date: Optional[str],
-                        months: int = 6) -> Tuple[str, str]:
-    today = datetime.date.today()
-    end = datetime.datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else today
-    if start_date:
-        start = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
-    else:
-        start = end - datetime.timedelta(days=months * 30)
-    if start > end:
-        start = end - datetime.timedelta(days=months * 30)
-    return start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")
-
-
-@lru_cache(maxsize=16)
 def get_index_history(symbol: str = "VNINDEX", start_date: Optional[str] = None,
                       end_date: Optional[str] = None, months: int = 6,
                       source: str = "VCI") -> pd.DataFrame:
     """Fetch historical quotes for a market index."""
-    start, end = _resolve_date_range(start_date, end_date, months)
+    # Xử lý ngày tháng
+    today = datetime.datetime.now(VN_TZ).date()
+    e_date = datetime.datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else today
+    
+    if start_date:
+        s_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
+    else:
+        s_date = e_date - datetime.timedelta(days=months * 30)
+    
+    # Đảm bảo start < end
+    if s_date > e_date:
+         s_date = e_date - datetime.timedelta(days=30)
+
     try:
+        # Không dùng cache ở đây vì start/end date thay đổi liên tục theo ngày
+        # Nếu muốn cache, phải cache theo logic _fetch_single_stock_cached
         stock = Vnstock().stock(symbol=symbol, source=source)
-        history = stock.quote.history(start=start, end=end)
-    except Exception as exc:  # pragma: no cover
+        history = stock.quote.history(start=s_date.strftime("%Y-%m-%d"), 
+                                      end=e_date.strftime("%Y-%m-%d"))
+        
+        if history is None or history.empty:
+            return pd.DataFrame()
+
+        history = history.copy()
+        history['time'] = pd.to_datetime(history['time'])
+        history['symbol'] = symbol
+        
+        cols = ['time', 'close', 'volume', 'symbol']
+        return history[[c for c in cols if c in history.columns]]
+        
+    except Exception as exc:
         print(f"Lỗi khi lấy dữ liệu chỉ số {symbol}: {exc}")
-        return pd.DataFrame(columns=["time", "close", "volume", "symbol"])
-
-    if history is None or history.empty:
-        return pd.DataFrame(columns=["time", "close", "volume", "symbol"])
-
-    history = history.copy()
-    history['time'] = pd.to_datetime(history['time'])
-    history['symbol'] = symbol
-    return history[['time', 'close', 'volume', 'symbol']]
-
-
-def get_sector_snapshot(exchange: str = "HOSE,HNX,UPCOM", size: int = 400,
-                        source: str = "TCBS", columns: Optional[List[str]] = None) -> pd.DataFrame:
-    """Fetch the latest screener snapshot covering the entire market."""
-
-    columns_key: Optional[Tuple[str, ...]] = tuple(columns) if columns else None
-    return _get_sector_snapshot_cached(exchange, size, source, columns_key)
+        return pd.DataFrame()
 
 
 @lru_cache(maxsize=4)
-def _get_sector_snapshot_cached(exchange: str, size: int, source: str,
-                                 columns_key: Optional[Tuple[str, ...]]) -> pd.DataFrame:
+def _get_sector_snapshot_cached(exchange: str, size: int, source: str) -> pd.DataFrame:
+    """Helper cached function for screener."""
     try:
+        # Lưu ý: Vnstock screener API thay đổi thường xuyên
         stock = Vnstock().stock(symbol='VNINDEX', source=source)
         params = {"exchangeName": exchange, "size": size}
         snapshot = stock.screener.stock(params=params)
-    except Exception as exc:  # pragma: no cover
-        print(f"Không thể tải dữ liệu screener: {exc}")
+        return snapshot if snapshot is not None else pd.DataFrame()
+    except Exception:
         return pd.DataFrame()
 
-    if snapshot is None or snapshot.empty:
+def get_sector_snapshot(exchange: str = "HOSE,HNX,UPCOM", size: int = 400,
+                        source: str = "TCBS", columns: Optional[List[str]] = None) -> pd.DataFrame:
+    """Fetch the latest screener snapshot."""
+    snapshot = _get_sector_snapshot_cached(exchange, size, source)
+    
+    if snapshot.empty:
         return pd.DataFrame()
 
-    if columns_key:
-        mandatory = ["industry", "ticker"]
-        ordered = mandatory + [col for col in columns_key if col not in mandatory]
-        selected = [col for col in ordered if col in snapshot.columns]
-        if selected:
-            snapshot = snapshot[selected].copy()
-        else:
-            snapshot = snapshot.copy()
-    else:
-        snapshot = snapshot.copy()
+    df = snapshot.copy() # Copy từ cache
+    
+    if 'industry' in df.columns:
+        df['industry'] = df['industry'].fillna('Ngành khác')
 
-    snapshot['industry'] = snapshot['industry'].fillna('Ngành khác')
     numeric_columns = [
-        'market_cap', 'price_growth_1w', 'price_growth_1m', 'avg_trading_value_20d',
-        'avg_trading_value_10d', 'avg_trading_value_5d', 'foreign_buysell_20s',
-        'foreign_vol_pct', 'percent_price_vs_ma20', 'percent_price_vs_ma50',
-        'percent_price_vs_ma100', 'percent_price_vs_ma200'
+        'market_cap', 'price_growth_1w', 'price_growth_1m', 
+        'avg_trading_value_20d', 'foreign_buysell_20s'
     ]
-    for column in numeric_columns:
-        if column in snapshot.columns:
-            snapshot[column] = pd.to_numeric(snapshot[column], errors='coerce')
-    return snapshot
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+    if columns:
+        # Chỉ giữ lại các cột tồn tại
+        valid_cols = [c for c in columns if c in df.columns]
+        if valid_cols:
+            return df[valid_cols]
+            
+    return df
 
 
 def get_realtime_index_board(symbols: List[str]) -> pd.DataFrame:
     """Fetch real-time index board data using the price_board API."""
     if not symbols:
-        return pd.DataFrame(columns=['symbol', 'gia_khop', 'thay_doi', 'ty_le_thay_doi'])
+        return pd.DataFrame()
 
     try:
-        stock = Vnstock().stock(symbol='VNINDEX', source='VCI')
+        # price_board source VCI thường ổn định
+        stock = Vnstock().stock(symbol='VNINDEX', source='VCI') 
         board = stock.trading.price_board(symbols)
-    except Exception as exc:  # pragma: no cover - external service
+    except Exception as exc:
         print(f"Không thể tải price_board: {exc}")
-        return pd.DataFrame(columns=['symbol', 'gia_khop', 'thay_doi', 'ty_le_thay_doi'])
+        return pd.DataFrame()
 
     if board is None or board.empty:
-        return pd.DataFrame(columns=['symbol', 'gia_khop', 'thay_doi', 'ty_le_thay_doi'])
+        return pd.DataFrame()
 
     board = board.copy()
+    
+    # Xử lý làm phẳng MultiIndex Columns (nếu có) một cách an toàn
     if isinstance(board.columns, pd.MultiIndex):
-        board.columns = ['_'.join([str(level) for level in levels if level and str(level) != 'nan']).lower()
-                         for levels in board.columns]
+        new_cols = []
+        for col in board.columns.values:
+            # col là tuple, ví dụ ('match', 'price')
+            clean_col = "_".join([str(x) for x in col if x and str(x) != 'nan']).strip().lower()
+            new_cols.append(clean_col)
+        board.columns = new_cols
 
+    # Map tên cột phổ biến từ API về tên chuẩn
+    # API thường trả về: a (symbol), b (ceiling), c (floor), ... hoặc tên đầy đủ tùy version
+    # Ở đây giả định API trả về tên có chứa từ khóa
+    
     rename_map = {
-        'listing_symbol': 'symbol',
-        'match_match_price': 'gia_khop',
-        'match_reference_price': 'gia_tham_chieu'
+        'thong_tin_cophieu_dang_ky_mack': 'symbol', # Tên cột cũ của TCBS/VND
+        'symbol': 'symbol',
+        'khop_lenh_gia': 'gia_khop',
+        'match_price': 'gia_khop',
+        'gia_tham_chieu': 'gia_tham_chieu',
+        'reference_price': 'gia_tham_chieu',
+        'ref_price': 'gia_tham_chieu'
     }
-    board = board.rename(columns=rename_map)
+    
+    # Cố gắng rename
+    for col in board.columns:
+        for key, val in rename_map.items():
+            if key in col:
+                board.rename(columns={col: val}, inplace=True)
+
+    required = ['symbol', 'gia_khop', 'gia_tham_chieu']
+    if not all(col in board.columns for col in required):
+        # Fallback: Nếu không tìm thấy cột, trả về DF rỗng thay vì lỗi
+        # print(f"Cấu trúc API thay đổi, các cột hiện có: {board.columns.tolist()}")
+        return pd.DataFrame()
+
     board = board.dropna(subset=['symbol'])
-    for column in ['gia_khop', 'gia_tham_chieu']:
-        if column in board.columns:
-            board[column] = pd.to_numeric(board[column], errors='coerce')
-
     board['symbol'] = board['symbol'].astype(str).str.upper()
+    
+    for col in ['gia_khop', 'gia_tham_chieu']:
+        board[col] = pd.to_numeric(board[col], errors='coerce')
 
+    # Tính toán
     board['thay_doi'] = board['gia_khop'] - board['gia_tham_chieu']
-    board['ty_le_thay_doi'] = board.apply(
-        lambda row: ((row['gia_khop'] - row['gia_tham_chieu']) / row['gia_tham_chieu'] * 100)
-        if row['gia_tham_chieu'] not in (0, None) else 0,
-        axis=1
-    )
-    board['last_updated'] = datetime.datetime.now()
+    
+    def calc_pct(row):
+        ref = row['gia_tham_chieu']
+        if ref is None or ref == 0:
+            return 0.0
+        return ((row['gia_khop'] - ref) / ref) * 100
+
+    board['ty_le_thay_doi'] = board.apply(calc_pct, axis=1)
+    board['last_updated'] = datetime.datetime.now(VN_TZ)
 
     return board[['symbol', 'gia_khop', 'gia_tham_chieu', 'thay_doi', 'ty_le_thay_doi', 'last_updated']]
-
-
-__all__ = [
-    'fetch_data_from_csv', 'create_vnstock_instance', 'fetch_stock_data2',
-    'get_latest_prices', 'fetch_ohlc_data', 'get_index_history', 'get_sector_snapshot',
-    'get_realtime_index_board'
-]
