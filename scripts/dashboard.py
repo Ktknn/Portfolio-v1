@@ -13,6 +13,12 @@ import datetime
 import sys
 import os
 
+st.set_page_config(
+    page_title="Dashboard Tối ưu hóa Danh mục Đầu tư",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 # Thêm đường dẫn để import các module
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -55,6 +61,7 @@ from scripts.ui_components import (
 from scripts.market_overview import (
     show_sector_overview_page
 )
+from scripts.dashboard_executive import render_bang_dieu_hanh
 from scripts.session_manager import (
     initialize_session_state,
     save_manual_filter_state,
@@ -414,8 +421,11 @@ if option == "Trợ lý AI":
         render_chat_controls(controls_container, key_prefix="main_sidebar")
 
 elif option == "Tổng quan Thị trường & Ngành":
-    # Hiển thị trang tổng quan ngành
-    show_sector_overview_page(df, data_loader_module)
+    render_bang_dieu_hanh(
+        sector_df=df,
+        data_loader=data_loader_module,
+        overview_renderer=show_sector_overview_page
+    )
 
 elif option == "Tự chọn mã cổ phiếu":
     # Giao diện người dùng để lọc từ file CSV

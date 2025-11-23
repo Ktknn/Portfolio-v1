@@ -2,7 +2,8 @@ streamlit
 pandas
 plotly
 numpy
-vnstock
+vnstock==3.2.6
+vnai==2.1.9
 PyPortfolioOpt
 scipy
 pandas-ta
