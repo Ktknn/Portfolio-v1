@@ -1069,7 +1069,7 @@ def render_bang_dieu_hanh():
     st.markdown(DASHBOARD_STYLE, unsafe_allow_html=True)
 
     st.markdown('<div class="dashboard-header">PHÂN TÍCH THỊ TRƯỜNG & NGÀNH</div>', unsafe_allow_html=True)
-    st.markdown('<div class="dashboard-subtitle">Dữ liệu tổng hợp theo tháng & cập nhật theo thời gian thực</div>', unsafe_allow_html=True)
+    st.markdown('<div class="dashboard-subtitle">Dữ liệu tổng hợp & cập nhật theo thời gian thực</div>', unsafe_allow_html=True)
 
     with st.spinner("Đang tải dữ liệu tổng quan..."):
         overview_data = load_overview_data()
