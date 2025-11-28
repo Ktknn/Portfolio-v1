@@ -348,12 +348,24 @@ def plot_interactive_stock_chart(data, tickers):
     # Reset index để hiển thị cột 'time' dưới dạng trục X
     data_reset = data.reset_index()
     
+    available_tickers = [ticker for ticker in tickers if ticker in data_reset.columns]
+    missing_tickers = sorted(set(tickers) - set(available_tickers))
+
+    if missing_tickers:
+        st.warning(
+            "Không có dữ liệu cho các mã: " + ", ".join(missing_tickers)
+        )
+
+    if not available_tickers:
+        st.warning("Không có dữ liệu phù hợp để hiển thị biểu đồ.")
+        return
+
     # Định dạng dữ liệu cho biểu đồ dạng dài
     data_long = pd.melt(
         data_reset,
         id_vars=['time'],
-        value_vars=tickers,
-    var_name='Mã cổ phiếu',
+        value_vars=available_tickers,
+        var_name='Mã cổ phiếu',
         value_name='Giá đóng cửa'
     )
 

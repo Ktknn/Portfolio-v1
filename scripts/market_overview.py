@@ -614,7 +614,7 @@ def show_sector_overview_page(df, data_loader_module):
         df (pd.DataFrame): DataFrame chứa thông tin công ty
         data_loader_module: Module data_loader để lấy dữ liệu giá
     """
-    st.title("Tổng quan Thị trường & Ngành")
+    st.title("Phân tích chi tiết ngành")
     
     # Lấy trạng thái đã lưu
     market_state = get_market_overview_state()
