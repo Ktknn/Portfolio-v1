@@ -77,7 +77,7 @@ class PortfolioChatbot:
             str: System prompt
         """
         base_prompt = (
-    "Bạn là một trợ lý AI chuyên về tư vấn đầu tư chứng khoán tại thị trường Việt Nam.\n\n"
+     "Bạn là một trợ lý AI chuyên về tư vấn đầu tư chứng khoán tại thị trường Việt Nam.\n\n"
     "**Nhiệm vụ chính:**\n"
     "- Tư vấn chiến lược đầu tư (ngắn hạn, trung hạn, dài hạn).\n"
     "- Giải thích các chỉ số tài chính và phương pháp định giá doanh nghiệp.\n"
@@ -89,7 +89,8 @@ class PortfolioChatbot:
     "3.  **Cá nhân hóa:** Nếu người dùng cung cấp thông tin về danh mục đầu tư hiện tại, hãy sử dụng thông tin đó làm cơ sở để đưa ra các đề xuất tối ưu và phù hợp nhất.\n\n"
     "**Định dạng trả lời:**\n"
     "- Sử dụng tiếng Việt, văn phong ngắn gọn, đi thẳng vào vấn đề, không bỏ sót câu trả lời.\n"
-    "- Ưu tiên các giải pháp và hành động mang tính thực tiễn.\n\n"
+    "- Ưu tiên các giải pháp và hành động mang tính thực tiễn.\n"
+    "- Trả lời ngắn gọn, đúng trọng tâm, không lan man dài dòng.\n"
 )
 
         if portfolio_data:
@@ -146,7 +147,7 @@ class PortfolioChatbot:
                 full_prompt += f"{role_label}: {msg['content']}\n\n"
             
             # Debug: In ra để kiểm tra
-            print(f"[DEBUG] Sending prompt to Gemini API...")
+            print(f" Sending prompt to Gemini API...")
             
             # Gọi Google Gemini API
             response = self.model.generate_content(
@@ -159,34 +160,34 @@ class PortfolioChatbot:
                 }
             )
             
-            print(f"[DEBUG] Received response from Gemini API")
+            print(f"Received response from Gemini API")
             
             # Kiểm tra response có bị block không
             if hasattr(response, 'prompt_feedback') and hasattr(response.prompt_feedback, 'block_reason'):
                 if response.prompt_feedback.block_reason:
                     error_msg = f"Câu hỏi bị chặn do: {response.prompt_feedback.block_reason}. Vui lòng thử câu hỏi khác."
-                    print(f"[DEBUG] Blocked: {error_msg}")
+                    print(f" Blocked: {error_msg}")
                     return error_msg
             
             # Kiểm tra response có parts không
             if not response or not hasattr(response, 'parts') or not response.parts:
                 error_msg = "Xin lỗi, tôi không nhận được phản hồi từ AI. Vui lòng thử lại."
-                print(f"[DEBUG] No parts in response")
+                print(f" No parts in response")
                 return error_msg
             
             # Lấy text từ response
             try:
                 assistant_message = response.text
-                print(f"[DEBUG] Got response text: {len(assistant_message)} chars")
+                print(f" Got response text: {len(assistant_message)} chars")
             except Exception as text_error:
                 error_msg = f"Xin lỗi, không thể đọc phản hồi: {str(text_error)}. Vui lòng thử lại."
-                print(f"[DEBUG] Error getting text: {text_error}")
+                print(f" Error getting text: {text_error}")
                 return error_msg
             
             # Kiểm tra message có nội dung không
             if not assistant_message or assistant_message.strip() == "":
                 error_msg = "Xin lỗi, câu trả lời trống. Vui lòng thử câu hỏi khác."
-                print(f"[DEBUG] Empty response")
+                print(f" Empty response")
                 return error_msg
             
             # Thêm response vào lịch sử

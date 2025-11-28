@@ -12,6 +12,7 @@ def get_welcome_message():
 
 Tôi là trợ lý AI của Portfolio Dashboard. Bạn cần giúp gì hôm nay? Hãy thử bắt đầu bằng việc:"""
 
+
 def _clear_chat_history():
     """Xóa hoàn toàn lịch sử chat hiện tại."""
     st.session_state.chat_messages = []
@@ -356,7 +357,7 @@ def render_chatbot_page():
     chat_container = st.container(height=500)
     with chat_container:
         # Hiển thị lịch sử chat
-        for idx, message in enumerate(st.session_state.chat_messages):
+        for message in st.session_state.chat_messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
         
