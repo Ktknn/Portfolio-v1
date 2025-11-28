@@ -5,7 +5,7 @@ from typing import Iterable, Optional, Sequence, Tuple
 
 import pandas as pd
 
-from scripts.fetchers import fetch_stock_data2
+from data_process.fetchers import fetch_stock_data2
 
 
 def calculate_metrics(data: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:

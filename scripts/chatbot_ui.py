@@ -3,7 +3,7 @@ Chatbot UI Component - Giao diện chatbox tích hợp vào dashboard.
 """
 
 import streamlit as st
-from scripts.chatbot_service import PortfolioChatbot, create_quick_question_buttons
+from chatbot.chatbot_service import PortfolioChatbot, create_quick_question_buttons
 
 
 def get_welcome_message():

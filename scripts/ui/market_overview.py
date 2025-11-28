@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import warnings
 
-from scripts.data_loader import (
+from data_process.data_loader import (
     fetch_data_from_csv,
     get_market_indices_metrics,
     get_indices_history,
@@ -24,7 +24,7 @@ from scripts.data_loader import (
     get_return_correlation_matrix,
     get_realtime_index_board,
 )
-from scripts.config import ANALYSIS_START_DATE, ANALYSIS_END_DATE
+from utils.config import ANALYSIS_START_DATE, ANALYSIS_END_DATE
 
 warnings.filterwarnings('ignore')
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from .chatbot_service import load_gemini_api_key
+from chatbot.chatbot_service import load_gemini_api_key
 
 # Cấu hình thời gian phân tích
 ANALYSIS_END_DATE = datetime.now().strftime("%Y-%m-%d")  # Hôm nay

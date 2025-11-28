@@ -6,7 +6,7 @@ Sử dụng Google Gemini API (miễn phí)
 import os
 from datetime import datetime
 import google.generativeai as genai
-from scripts.market_data_adapter import get_market_data_adapter
+from chatbot.market_data_adapter import get_market_data_adapter
 
 
 def load_gemini_api_key() -> str:
@@ -16,7 +16,7 @@ def load_gemini_api_key() -> str:
         return env_key
 
     try:
-        from .secret_config import GEMINI_API_KEY as secret_key  # type: ignore
+        from utils.secret_config import GEMINI_API_KEY as secret_key  # type: ignore
 
         return secret_key
     except ImportError:
