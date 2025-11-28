@@ -1,6 +1,6 @@
 """Test Gemini API response structure"""
 import google.generativeai as genai
-from scripts.config import GEMINI_API_KEY
+from scripts.utils.config import GEMINI_API_KEY
 
 genai.configure(api_key=GEMINI_API_KEY)
 

@@ -23,10 +23,10 @@ st.set_page_config(
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import cấu hình
-from scripts.config import ANALYSIS_START_DATE, ANALYSIS_END_DATE, DEFAULT_MARKET, DEFAULT_INVESTMENT_AMOUNT
+from utils.config import ANALYSIS_START_DATE, ANALYSIS_END_DATE, DEFAULT_MARKET, DEFAULT_INVESTMENT_AMOUNT
 
 # Import các module đã tách
-from scripts.data_loader import (
+from data_process.data_loader import (
     fetch_data_from_csv,
     fetch_stock_data2,
     get_latest_prices,
@@ -41,7 +41,7 @@ from scripts.portfolio_models import (
     min_cdar,
     hrp_model
 )
-from scripts.visualization import (
+from ui.visualization import (
     plot_interactive_stock_chart,
     plot_interactive_stock_chart_with_indicators,
     plot_efficient_frontier,
@@ -54,26 +54,30 @@ from scripts.visualization import (
     plot_min_cdar_analysis,
     visualize_hrp_model
 )
-from scripts.ui_components import (
+from ui.ui_components import (
     display_selected_stocks,
     display_selected_stocks_2
 )
-from scripts.dashboard_executive import render_bang_dieu_hanh
-from scripts.session_manager import (
+from ui.market_overview import render_bang_dieu_hanh
+from news_tab import render
+from utils.session_manager import (
     initialize_session_state,
     save_manual_filter_state,
     save_auto_filter_state,
     get_manual_filter_state,
     get_auto_filter_state,
     update_current_tab,
-    get_current_tab
+    get_current_tab,
+    save_optimization_result,
+    get_optimization_results,
+    clear_optimization_results
 )
-from scripts.chatbot_ui import (
+from scripts.optimization_comparison import render_optimization_comparison_tab
+from chatbot.chatbot_ui import (
     render_chatbot_page,
     render_chat_controls
 )
-import scripts.data_loader as data_loader_module
-
+import data_process.data_loader as data_loader_module
 # Đường dẫn đến file CSV
 data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
 file_path = os.path.join(data_dir, "company_info.csv")
@@ -154,6 +158,15 @@ def run_models(data):
                 # Chạy mô hình tối ưu hóa
                 result = model_details["function"](data, total_investment)
                 if result:
+                    # Xác định mode dựa trên tab hiện tại
+                    mode = 'manual' if current_tab == "Tự chọn mã cổ phiếu" else 'auto'
+                    
+                    # Lưu kết quả vào session state
+                    save_optimization_result(model_details["original_name"], result, mode=mode)
+                    
+                    # Thông báo đã lưu
+                    st.success(f"✅ Đã lưu kết quả {model_details['original_name']} vào tab Tổng hợp Kết quả!")
+                    
                     # Hiển thị kết quả tối ưu hóa
                     display_results(model_details["original_name"], result)
 
@@ -396,17 +409,54 @@ def main_auto_selection():
 # Sidebar
 st.sidebar.title("Lựa chọn phương thức")
 
-# Tùy chọn giữa các chế độ - Lấy giá trị mặc định từ session state
+# Hiển thị số lượng kết quả đã lưu
+manual_count = len(get_optimization_results('manual'))
+auto_count = len(get_optimization_results('auto'))
+
+if manual_count > 0 or auto_count > 0:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 Kết quả đã lưu")
+    if manual_count > 0:
+        st.sidebar.info(f"**Tự chọn:** {manual_count} mô hình")
+    if auto_count > 0:
+        st.sidebar.info(f"**Đề xuất tự động:** {auto_count} mô hình")
+    st.sidebar.markdown("---")
+
+# Lấy giá trị mặc định từ session state
 default_option = get_current_tab()
-option = st.sidebar.radio(
-    "Chọn phương thức", 
-    ["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động", "Trợ lý AI"],
-    index=["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động", "Trợ lý AI"].index(default_option) if default_option in ["Tổng quan Thị trường & Ngành", "Tự chọn mã cổ phiếu", "Hệ thống đề xuất mã cổ phiếu tự động", "Trợ lý AI"] else 0
-)
 
-# Cập nhật tab hiện tại vào session state
-update_current_tab(option)
+# Tạo các button bố cục dọc thay vì radio
+option = default_option
+if st.sidebar.button("📊 Tổng quan Thị trường & Ngành", use_container_width=True, type="primary" if default_option == "Tổng quan Thị trường & Ngành" else "secondary"):
+    option = "Tổng quan Thị trường & Ngành"
+    update_current_tab(option)
+    st.rerun()
 
+if st.sidebar.button("📝 Tự chọn mã cổ phiếu", use_container_width=True, type="primary" if default_option == "Tự chọn mã cổ phiếu" else "secondary"):
+    option = "Tự chọn mã cổ phiếu"
+    update_current_tab(option)
+    st.rerun()
+
+if st.sidebar.button("🤖 Hệ thống đề xuất mã cổ phiếu tự động", use_container_width=True, type="primary" if default_option == "Hệ thống đề xuất mã cổ phiếu tự động" else "secondary"):
+    option = "Hệ thống đề xuất mã cổ phiếu tự động"
+    update_current_tab(option)
+    st.rerun()
+
+if st.sidebar.button("💬 Trợ lý AI", use_container_width=True, type="primary" if default_option == "Trợ lý AI" else "secondary"):
+    option = "Trợ lý AI"
+    update_current_tab(option)
+    st.rerun()
+
+if st.sidebar.button("📊 Tổng hợp Kết quả Tối ưu hóa", use_container_width=True, type="primary" if default_option == "Tổng hợp Kết quả Tối ưu hóa" else "secondary"):
+    option = "Tổng hợp Kết quả Tối ưu hóa"
+    update_current_tab(option)
+    st.rerun()
+# if st.sidebar.button("📰 Tin tức Thị trường & Phân tích", use_container_width=True, type="primary" if default_option == "Tin tức Thị trường & Phân tích" else "secondary"):
+#     option = "Tin tức Thị trường & Phân tích"
+#     update_current_tab(option)
+#     st.rerun()
+# if option == "Tin tức Thị trường & Phân tích":
+#     render()
 if option == "Trợ lý AI":
     # Hiển thị trang chatbot
     render_chatbot_page()
@@ -416,6 +466,46 @@ if option == "Trợ lý AI":
         st.sidebar.markdown("#### Tiện ích Trợ lý AI")
         controls_container = st.sidebar.container()
         render_chat_controls(controls_container, key_prefix="main_sidebar")
+
+elif option == "Tổng hợp Kết quả Tối ưu hóa":
+    # Tự động xác định mode dựa trên tab trước đó
+    previous_tab = st.session_state.get('previous_tab', 'Tự chọn mã cổ phiếu')
+    
+    # Xác định mode dựa trên tab trước đó
+    if previous_tab == "Hệ thống đề xuất mã cổ phiếu tự động":
+        mode = 'auto'
+        mode_display = "Hệ thống đề xuất mã cổ phiếu tự động"
+    else:
+        mode = 'manual'
+        mode_display = "Tự chọn mã cổ phiếu"
+    
+    # Hiển thị thông tin mode trong sidebar
+    st.sidebar.title("Thông tin")
+    st.sidebar.info(f"📌 Hiển thị kết quả từ:\n**{mode_display}**")
+    
+    # Cho phép chuyển đổi mode
+    st.sidebar.markdown("---")
+    if mode == 'manual':
+        if st.sidebar.button("🔄 Xem kết quả Đề xuất tự động", use_container_width=True):
+            st.session_state.previous_tab = "Hệ thống đề xuất mã cổ phiếu tự động"
+            st.rerun()
+    else:
+        if st.sidebar.button("🔄 Xem kết quả Tự chọn", use_container_width=True):
+            st.session_state.previous_tab = "Tự chọn mã cổ phiếu"
+            st.rerun()
+    
+    # Nút xóa kết quả
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🗑️ Xóa tất cả kết quả", help="Xóa tất cả kết quả tối ưu hóa đã lưu", use_container_width=True):
+        clear_optimization_results(mode)
+        st.sidebar.success("✅ Đã xóa tất cả kết quả!")
+        st.rerun()
+    
+    # Lấy kết quả tối ưu hóa
+    results = get_optimization_results(mode)
+    
+    # Hiển thị tab so sánh
+    render_optimization_comparison_tab(results)
 
 elif option == "Tổng quan Thị trường & Ngành":
     render_bang_dieu_hanh()

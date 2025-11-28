@@ -19,6 +19,10 @@ def initialize_session_state():
     if 'current_tab' not in st.session_state:
         st.session_state.current_tab = "Tổng quan Thị trường & Ngành"
     
+    # Tab trước đó (để xác định mode khi vào tab Tổng hợp)
+    if 'previous_tab' not in st.session_state:
+        st.session_state.previous_tab = "Tự chọn mã cổ phiếu"
+    
     # ========== CHẾ ĐỘ TỰ CHỌN (Manual Selection) ==========
     # Danh sách cổ phiếu đã chọn
     if 'selected_stocks' not in st.session_state:
@@ -85,6 +89,15 @@ def initialize_session_state():
             'selected_exchange': None,
             'view_mode': 'market',  # 'market' hoặc 'sector'
         }
+    
+    # ========== KẾT QUẢ TỐI ƯU HÓA ==========
+    # Lưu trữ kết quả tối ưu hóa từ các mô hình (Manual mode)
+    if 'manual_optimization_results' not in st.session_state:
+        st.session_state.manual_optimization_results = {}
+    
+    # Lưu trữ kết quả tối ưu hóa từ các mô hình (Auto mode)
+    if 'auto_optimization_results' not in st.session_state:
+        st.session_state.auto_optimization_results = {}
 
 
 def save_manual_filter_state(exchange, icb_name, start_date, end_date, enable_fundamental_filter):
@@ -190,11 +203,15 @@ def clear_auto_selection():
 
 def update_current_tab(tab_name):
     """
-    Cập nhật tab hiện tại.
+    Cập nhật tab hiện tại và lưu tab trước đó.
     
     Args:
         tab_name (str): Tên tab/trang hiện tại
     """
+    # Lưu tab hiện tại thành tab trước đó (trừ tab Tổng hợp)
+    if st.session_state.current_tab != "Tổng hợp Kết quả Tối ưu hóa":
+        st.session_state.previous_tab = st.session_state.current_tab
+    
     st.session_state.current_tab = tab_name
 
 
@@ -206,3 +223,48 @@ def get_current_tab():
         str: Tên tab hiện tại
     """
     return st.session_state.current_tab
+
+
+def save_optimization_result(model_name, result, mode='manual'):
+    """
+    Lưu kết quả tối ưu hóa từ một mô hình.
+    
+    Args:
+        model_name (str): Tên mô hình (vd: "Markowitz", "Max Sharpe", ...)
+        result (dict): Kết quả tối ưu hóa
+        mode (str): 'manual' hoặc 'auto'
+    """
+    if mode == 'manual':
+        st.session_state.manual_optimization_results[model_name] = result
+    elif mode == 'auto':
+        st.session_state.auto_optimization_results[model_name] = result
+
+
+def get_optimization_results(mode='manual'):
+    """
+    Lấy tất cả kết quả tối ưu hóa đã lưu.
+    
+    Args:
+        mode (str): 'manual' hoặc 'auto'
+    
+    Returns:
+        dict: Dictionary chứa kết quả tối ưu hóa của các mô hình
+    """
+    if mode == 'manual':
+        return st.session_state.manual_optimization_results
+    elif mode == 'auto':
+        return st.session_state.auto_optimization_results
+    return {}
+
+
+def clear_optimization_results(mode='manual'):
+    """
+    Xóa tất cả kết quả tối ưu hóa đã lưu.
+    
+    Args:
+        mode (str): 'manual' hoặc 'auto'
+    """
+    if mode == 'manual':
+        st.session_state.manual_optimization_results = {}
+    elif mode == 'auto':
+        st.session_state.auto_optimization_results = {}

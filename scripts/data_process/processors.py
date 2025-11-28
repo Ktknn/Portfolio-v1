@@ -4,7 +4,7 @@ from typing import Iterable, List, Optional
 
 import pandas as pd
 
-from scripts.fetchers import get_index_history
+from data_process.fetchers import get_index_history
 
 INDEX_LABELS = {
     "VNINDEX": "VN-Index",

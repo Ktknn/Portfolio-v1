@@ -1,10 +1,10 @@
 """Compatibility layer that re-exports the modular data helpers."""
 
-from scripts.config import (
+from utils.config import (
     ANALYSIS_START_DATE,
     ANALYSIS_END_DATE,
 )
-from scripts.fetchers import (
+from data_process.fetchers import (
     fetch_data_from_csv,
     create_vnstock_instance,
     fetch_stock_data2,
@@ -14,11 +14,11 @@ from scripts.fetchers import (
     get_sector_snapshot,
     get_realtime_index_board,
 )
-from scripts.fundamentals import (
+from data_process.fundamentals import (
     fetch_fundamental_data,
     fetch_fundamental_data_batch,
 )
-from scripts.processors import (
+from data_process.processors import (
     INDEX_LABELS,
     DEFAULT_INDEX_SYMBOLS,
     get_indices_history,
@@ -29,7 +29,7 @@ from scripts.processors import (
     get_liquidity_leaders,
     get_sector_heatmap_matrix,
 )
-from scripts.quant import (
+from data_process.quant import (
     calculate_metrics,
     get_return_correlation_matrix,
 )

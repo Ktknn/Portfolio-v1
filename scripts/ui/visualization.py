@@ -376,14 +376,14 @@ def plot_interactive_stock_chart(data, tickers):
         y='Giá đóng cửa',
     color='Mã cổ phiếu',
     title="Biểu đồ giá mã cổ phiếu",
-    labels={"time": "Thời gian", "Giá đóng cửa": "Giá mã cổ phiếu (VND)"},
+    labels={"time": "Thời gian", "Giá đóng cửa": "Giá mã cổ phiếu (nghìn VND)"},
         template="plotly_white"
     )
 
     # Tuỳ chỉnh giao diện
     fig.update_layout(
         xaxis_title="Thời gian",
-    yaxis_title="Giá mã cổ phiếu (VND)",
+    yaxis_title="Giá mã cổ phiếu (nghìn VND)",
     legend_title="Mã cổ phiếu",
         hovermode="x unified"
     )
