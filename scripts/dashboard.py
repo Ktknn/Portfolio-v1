@@ -107,9 +107,11 @@ def run_models(data):
     if current_tab == "Tự chọn mã cổ phiếu":
         default_investment = st.session_state.manual_investment_amount
         investment_key = "manual_investment_amount"
+        mode = 'manual'
     else:
         default_investment = st.session_state.auto_investment_amount
         investment_key = "auto_investment_amount"
+        mode = 'auto'
     
     total_investment = st.sidebar.number_input(
         "Nhập số tiền đầu tư (VND)", 
@@ -124,6 +126,27 @@ def run_models(data):
         st.session_state.manual_investment_amount = total_investment
     else:
         st.session_state.auto_investment_amount = total_investment
+
+    # Nút chạy tất cả mô hình
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚀 Chạy Tất cả Mô hình", type="primary", use_container_width=True):
+        from scripts.auto_optimization import run_all_models
+        
+        with st.spinner("⏳ Đang chạy tất cả các mô hình tối ưu hóa..."):
+            # Xóa kết quả cũ
+            clear_optimization_results(mode)
+            
+            # Chạy tất cả mô hình
+            results = run_all_models(data, total_investment, get_latest_prices, mode)
+            
+            if results:
+                st.success(f"✅ Hoàn thành! Đã chạy {len(results)}/6 mô hình thành công.")
+                st.info("💡 Vào tab **'Tổng hợp Kết quả Tối ưu hóa'** để xem so sánh chi tiết!")
+            else:
+                st.error("❌ Không thể chạy bất kỳ mô hình nào. Vui lòng kiểm tra dữ liệu.")
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 Hoặc chọn từng mô hình")
 
     models = {
         "Tối ưu hóa giữa lợi nhuận và rủi ro": {
@@ -158,9 +181,6 @@ def run_models(data):
                 # Chạy mô hình tối ưu hóa
                 result = model_details["function"](data, total_investment)
                 if result:
-                    # Xác định mode dựa trên tab hiện tại
-                    mode = 'manual' if current_tab == "Tự chọn mã cổ phiếu" else 'auto'
-                    
                     # Lưu kết quả vào session state
                     save_optimization_result(model_details["original_name"], result, mode=mode)
                     
