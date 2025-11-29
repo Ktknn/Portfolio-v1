@@ -1,6 +1,7 @@
-# ======================================================
-# 📰 ui/news_tab.py — Tab tin tức từ nhiều nguồn
-# ======================================================
+"""
+Module news_tab.py
+Tạo tab tổng hợp tin tức từ nhiều nguồn để hỗ trợ quyết định đầu tư.
+"""
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
